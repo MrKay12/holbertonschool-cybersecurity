@@ -1,0 +1,1 @@
+Simple whoami in SSH to learn basic stuff.
