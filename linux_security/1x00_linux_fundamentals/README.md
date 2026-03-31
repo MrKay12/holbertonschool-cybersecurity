@@ -1,1 +1,1 @@
-Simple whoami in SSH to learn basic stuff.
+First repo for learn basic ssh stuff and the basics command.
