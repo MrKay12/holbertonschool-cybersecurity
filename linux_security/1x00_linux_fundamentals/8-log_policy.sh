@@ -1,7 +1,7 @@
 #!/bin/bash
 
 chown root:$2 $1
-chmod 2770 $1
+chmod 2750 $1
 
 echo "$1/*.log {
     daily
