@@ -1,2 +1,2 @@
 #!/bin/bash
-find ./ -type f -size +1024b 2>/dev/null && cat "$1" 2>/dev/null
+ls -l | awk '$5 > 1024 {print $9}'
