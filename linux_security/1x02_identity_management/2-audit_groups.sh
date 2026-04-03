@@ -1,2 +1,2 @@
 #!/bin/bash
-awk -F: 'NR==FNR && $3>=1000 {users[$1]; next} $1~/^(disk|docker|shadow)$/ {for(i=4;i<=NF;i++) if($i in users) print $i ":" $1}' "$1" /etc/group
+awk -F: '$3>=1000{print $1}' "$1" | while read u; do grep -E '^(disk|docker|shadow):' /etc/group | grep -w "$u" | cut -d: -f1 | sed "s/^/$u:/"; done
