@@ -1,2 +1,2 @@
 #!/bin/bash
-awk -F: '$3>=1000{print $1}' "$1" | while read u; do grep -E '^(disk|docker|shadow):' /etc/group | grep -w "$u" | cut -d: -f1 | sed "s/^/$u:/"; done
+awk -F: '$3>=1000{print $1}' "$1" | while read u; do id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -E '^(disk|docker|shadow)$' | sed "s/^/$u:/"; done
