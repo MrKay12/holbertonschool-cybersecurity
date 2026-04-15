@@ -1,2 +1,2 @@
 #!/bin/bash
-ss -ltnp | grep ":$1 " | awk '{print $6}' | cut -d'"' -f2
+lsof -iTCP:"$1" -sTCP:LISTEN | awk 'NR>1 {print $1}'
