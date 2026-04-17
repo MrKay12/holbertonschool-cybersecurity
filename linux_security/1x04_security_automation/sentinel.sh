@@ -34,3 +34,19 @@ fi
 echo "Configuration loaded successfully."
 echo "Services: ${SERVICES[*]}"
 echo "Files to watch: ${FILES_TO_WATCH[*]}"
+
+check_services() {
+    local svc
+
+    for svc in "${SERVICES[@]}"; do
+        if pgrep -f "$svc" > /dev/null 2>&1; then
+            echo "OK: $svc is running"
+        else
+            if eval "$svc" > /dev/null 2>&1; then
+                echo "FIXED: Restarted $svc"
+            else
+                echo "ERROR: Failed to restart $svc" >&2
+            fi
+        fi
+    done
+}
