@@ -84,13 +84,21 @@ check_integrity() {
 }
 
 check_ports() {
-    local port pid
+    local port pid allowed is_allowed
 
     while read -r port pid; do
         [[ -z "$port" ]] && continue
 
-        # Check if port is allowed
-        if [[ " ${ALLOWED_PORTS[*]} " =~ " ${port} " ]]; then
+        is_allowed=false
+
+        for allowed in "${ALLOWED_PORTS[@]}"; do
+            if [[ "$port" == "$allowed" ]]; then
+                is_allowed=true
+                break
+            fi
+        done
+
+        if [[ "$is_allowed" == true ]]; then
             continue
         fi
 
@@ -102,9 +110,9 @@ check_ports() {
 
     done < <(
         ss -tlnp 2>/dev/null | awk '
-            NR>1 {
+            NR > 1 {
                 split($4, a, ":")
-                port=a[length(a)]
+                port = a[length(a)]
                 if ($NF ~ /pid=/) {
                     match($NF, /pid=([0-9]+)/, m)
                     if (m[1] != "") {
