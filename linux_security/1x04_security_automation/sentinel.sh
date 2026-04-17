@@ -50,3 +50,35 @@ check_services() {
         fi
     done
 }
+
+check_integrity() {
+    local file gold live_hash gold_hash base
+
+    for file in "${FILES_TO_WATCH[@]}"; do
+        base="$(basename "$file")"
+        gold="/var/backups/sentinel/${base}.gold"
+
+        if [[ ! -f "$file" ]]; then
+            echo "ERROR: Live file missing: $file" >&2
+            continue
+        fi
+
+        if [[ ! -f "$gold" ]]; then
+            echo "ERROR: Golden copy missing: $gold" >&2
+            continue
+        fi
+
+        live_hash="$(md5sum "$file" | awk '{print $1}')"
+        gold_hash="$(md5sum "$gold" | awk '{print $1}')"
+
+        if [[ "$live_hash" == "$gold_hash" ]]; then
+            echo "OK: $file integrity verified"
+        else
+            if cp "$gold" "$file"; then
+                echo "FIXED: Restored $file"
+            else
+                echo "ERROR: Failed to restore $file" >&2
+            fi
+        fi
+    done
+}
