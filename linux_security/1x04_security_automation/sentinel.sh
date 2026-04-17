@@ -44,7 +44,7 @@ log() {
     local details="$4"
     local timestamp
 
-    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    timestamp="$(date -u +%FT%TZ)"
 
     printf '{"timestamp":"%s","component":"%s","target":"%s","status":"%s","details":"%s"}\n' \
         "$timestamp" "$component" "$target" "$status" "$details" >> /var/log/sentinel.log
