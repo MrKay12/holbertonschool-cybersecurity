@@ -3,7 +3,7 @@ Description=Sentinel Security Agent
 
 [Service]
 Type=oneshot
-ExecStart=/opt/sentinel/sentinel.sh
+ExecStart=/home/student/sentinel.sh
 User=root
 
 [Install]
