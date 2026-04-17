@@ -82,3 +82,41 @@ check_integrity() {
         fi
     done
 }
+
+check_ports() {
+    local port pid
+
+    while read -r port pid; do
+        [[ -z "$port" ]] && continue
+
+        # Check if port is allowed
+        if [[ " ${ALLOWED_PORTS[*]} " =~ " ${port} " ]]; then
+            continue
+        fi
+
+        if kill -9 "$pid" > /dev/null 2>&1; then
+            echo "ALERT: Killed rogue process on port $port"
+        else
+            echo "ERROR: Failed to kill process on port $port" >&2
+        fi
+
+    done < <(
+        ss -tlnp 2>/dev/null | awk '
+            NR>1 {
+                split($4, a, ":")
+                port=a[length(a)]
+                if ($NF ~ /pid=/) {
+                    match($NF, /pid=([0-9]+)/, m)
+                    if (m[1] != "") {
+                        print port, m[1]
+                    }
+                }
+            }
+        '
+    )
+}
+
+if [[ -z "${ALLOWED_PORTS+x}" ]]; then
+    echo "Error: ALLOWED_PORTS is not defined." >&2
+    exit 1
+fi
