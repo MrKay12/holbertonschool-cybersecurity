@@ -9,6 +9,7 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
     exit 1
 fi
 
+
 source "$CONFIG_FILE"
 
 if [[ -z "${SERVICES+x}" ]]; then
@@ -18,6 +19,11 @@ fi
 
 if [[ -z "${FILES_TO_WATCH+x}" ]]; then
     echo "Error: FILES_TO_WATCH variable is not defined in config." >&2
+    exit 1
+fi
+
+if [[ -z "${ALLOWED_PORTS+x}" ]]; then
+    echo "Error: ALLOWED_PORTS is not defined." >&2
     exit 1
 fi
 
@@ -31,6 +37,19 @@ if [[ ${#FILES_TO_WATCH[@]} -eq 0 ]]; then
     exit 1
 fi
 
+log() {
+    local component="$1"
+    local target="$2"
+    local status="$3"
+    local details="$4"
+    local timestamp
+
+    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    printf '{"timestamp":"%s","component":"%s","target":"%s","status":"%s","details":"%s"}\n' \
+        "$timestamp" "$component" "$target" "$status" "$details" >> /var/log/sentinel.log
+}
+
 echo "Configuration loaded successfully."
 echo "Services: ${SERVICES[*]}"
 echo "Files to watch: ${FILES_TO_WATCH[*]}"
@@ -41,11 +60,14 @@ check_services() {
     for svc in "${SERVICES[@]}"; do
         if pgrep -f "$svc" > /dev/null 2>&1; then
             echo "OK: $svc is running"
+            log "SERVICE" "$svc" "OK" "Service is running"
         else
             if eval "$svc" > /dev/null 2>&1; then
                 echo "FIXED: Restarted $svc"
+                log "SERVICE" "$svc" "FIXED" "Restarted service"
             else
-                echo "ERROR: Failed to restart $svc" >&2
+                echo "ALERT: Failed to restart $svc" >&2
+                log "SERVICE" "$svc" "ALERT" "Failed to restart service"
             fi
         fi
     done
@@ -59,12 +81,14 @@ check_integrity() {
         gold="/var/backups/sentinel/${base}.gold"
 
         if [[ ! -f "$file" ]]; then
-            echo "ERROR: Live file missing: $file" >&2
+            echo "ALERT: Live file missing: $file" >&2
+            log "INTEGRITY" "$file" "ALERT" "Live file missing"
             continue
         fi
 
         if [[ ! -f "$gold" ]]; then
-            echo "ERROR: Golden copy missing: $gold" >&2
+            echo "ALERT: Golden copy missing: $gold" >&2
+            log "INTEGRITY" "$file" "ALERT" "Golden copy missing"
             continue
         fi
 
@@ -73,11 +97,14 @@ check_integrity() {
 
         if [[ "$live_hash" == "$gold_hash" ]]; then
             echo "OK: $file integrity verified"
+            log "INTEGRITY" "$file" "OK" "Integrity verified"
         else
             if cp "$gold" "$file"; then
                 echo "FIXED: Restored $file"
+                log "INTEGRITY" "$file" "FIXED" "Restored file from golden copy"
             else
-                echo "ERROR: Failed to restore $file" >&2
+                echo "ALERT: Failed to restore $file" >&2
+                log "INTEGRITY" "$file" "ALERT" "Failed to restore file from golden copy"
             fi
         fi
     done
@@ -104,8 +131,10 @@ check_ports() {
 
         if kill -9 "$pid" > /dev/null 2>&1; then
             echo "ALERT: Killed rogue process on port $port"
+            log "PORT" "$port" "ALERT" "Killed rogue process on unauthorized port"
         else
-            echo "ERROR: Failed to kill process on port $port" >&2
+            echo "ALERT: Failed to kill process on port $port" >&2
+            log "PORT" "$port" "ALERT" "Failed to kill rogue process on unauthorized port"
         fi
 
     done < <(
@@ -124,7 +153,6 @@ check_ports() {
     )
 }
 
-if [[ -z "${ALLOWED_PORTS+x}" ]]; then
-    echo "Error: ALLOWED_PORTS is not defined." >&2
-    exit 1
-fi
+check_services
+check_integrity
+check_ports
