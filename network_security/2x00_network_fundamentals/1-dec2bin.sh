@@ -1,2 +1,2 @@
 #!/bin/bash
-printf "%08b\n" "$1"
+echo "obase=2;$1" | bc | xargs printf "%08d\n"
