@@ -1,12 +1,2 @@
 #!/bin/bash
-for i in 1 2 3 4; do
-  if [ $1 -ge 8 ]; then
-    printf "255"
-    ((1-=8))
-  else
-    printf "%d" $((256 - 2**(8-$1)))
-    1=0
-  fi
-  [ $i -lt 4 ] && printf "."
-done
-echo
+n=$1; for i in 1 2 3 4; do [ $n -ge 8 ] && o=255 || o=$((256-2**(8-n))); printf "%d" $o; [ $i -lt 4 ] && printf "."; n=$((n-8)); done; echo
