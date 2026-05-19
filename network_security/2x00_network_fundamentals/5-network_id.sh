@@ -1,4 +1,2 @@
 #!/bin/bash
-IFS=. read -r a b c d <<< "$1"
-IFS=. read -r e f g h <<< "$2"
-printf "%d.%d.%d.%d" $((a&e)) $((b&f)) $((c&g)) $((d&h))
+IFS=. read a b c d e f g h <<< "${1//./ } ${2//./ }"; printf "%d.%d.%d.%d" $((a&e)) $((b&f)) $((c&g)) $((d&h))
