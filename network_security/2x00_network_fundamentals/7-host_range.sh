@@ -1,0 +1,2 @@
+#!/bin/bash
+IFS=. read -r a b c d <<< "$1"; ip=$((a<<24|b<<16|c<<8|d)); mask=$((0xffffffff << (32-$2) & 0xffffffff)); n=$(( (ip&mask)+1 )); b=$(( (ip&mask|0xffffffff^mask)-1 )); printf "%d.%d.%d.%d - %d.%d.%d.%d" $((n>>24&255)) $((n>>16&255)) $((n>>8&255)) $((n&255)) $((b>>24&255)) $((b>>16&255)) $((b>>8&255)) $((b&255))
