@@ -1,1 +1,1 @@
-FTP||secret_data.txt
+ftp||payroll_Q4_2024.csv
