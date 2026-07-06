@@ -1,2 +1,2 @@
 #!/bin/bash
-tshark -r "$1" -T fields -e ip.src | sort | uniq -c | sort -nr | awk '{print $2}'
+tshark -r "$1" -T fields -e ip.src | sort | uniq -c | sort -rn | awk '{print $2}'
