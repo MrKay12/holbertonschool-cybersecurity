@@ -1,2 +1,2 @@
 #!/bin/bash
-tshark -r "$1" -Y "http.request.method == POST" -T fields -e http.file_data | grep -oE '(password|pass|pwd)=[^&]+' | cut -d= -f2
+tshark -r "$1" -T fields -e urlencoded-form.value
