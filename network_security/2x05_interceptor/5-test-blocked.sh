@@ -7,5 +7,14 @@ if [ $# -ne 1 ]; then
     exit 1
 fi
 
-curl -x "http://$1:3128" -o /dev/null -s -w "%{http_code}" http://malware.com
-echo
+http_code=$(curl -x "http://$1:3128" \
+    -o /dev/null \
+    -s \
+    -w "%{http_code}" \
+    http://malware.com)
+
+echo "$http_code"
+
+if [ "$http_code" -ne 403 ]; then
+    exit 1
+fi
