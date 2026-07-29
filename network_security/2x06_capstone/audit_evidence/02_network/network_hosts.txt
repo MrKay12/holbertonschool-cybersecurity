@@ -1,0 +1,7 @@
+Command: 
+cat /etc/hosts 2>/dev/null || true
+
+
+127.0.0.1 localhost
+10.42.85.186 
+127.0.0.1 18818412c63a431594f9fbc4f129e696-2377118072

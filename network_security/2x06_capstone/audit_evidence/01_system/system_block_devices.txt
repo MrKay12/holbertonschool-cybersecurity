@@ -1,0 +1,15 @@
+Command: lsblk -f
+
+NAME        FSTYPE FSVER LABEL UUID FSAVAIL FSUSE% MOUNTPOINTS
+nvme0n1                                            
+├─nvme0n1p1                                        
+├─nvme0n1p2                                        
+├─nvme0n1p3                                        
+├─nvme0n1p4                                        
+├─nvme0n1p5                                        
+├─nvme0n1p6                                        
+├─nvme0n1p7                                        
+└─nvme0n1p8                                        
+nvme1n1                               16.8G    13% /etc/hostname
+                                                   /etc/resolv.conf
+                                                   /etc/hosts

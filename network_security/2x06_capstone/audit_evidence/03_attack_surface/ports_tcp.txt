@@ -1,0 +1,8 @@
+Command: ss -ltnp
+
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+LISTEN 0      511          0.0.0.0:3000      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:3001      0.0.0.0:*          
+LISTEN 0      128          0.0.0.0:22        0.0.0.0:*          
+LISTEN 0      128             [::]:22           [::]:*          
+LISTEN 0      32                 *:21              *:*          

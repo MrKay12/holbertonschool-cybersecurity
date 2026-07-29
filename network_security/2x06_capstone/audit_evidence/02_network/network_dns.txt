@@ -1,0 +1,6 @@
+Command: 
+cat /etc/resolv.conf 2>/dev/null || true
+
+
+nameserver 10.42.0.2
+search eu-west-3.compute.internal

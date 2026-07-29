@@ -1,0 +1,5 @@
+Command: ip -br address show
+
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eth0@if5         UP             169.254.172.2/22 fe80::1ca6:32ff:fece:f8f6/64 
+eth1             UP             10.42.85.186/16 fe80::8ae:32ff:fecb:4b39/64 

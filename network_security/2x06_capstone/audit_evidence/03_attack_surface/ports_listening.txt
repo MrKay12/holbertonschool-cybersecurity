@@ -1,0 +1,14 @@
+Command: ss -tulpen
+
+Failed to find cgroup2 mount
+Failed to find cgroup2 mount
+Failed to find cgroup2 mount
+Failed to find cgroup2 mount
+Failed to find cgroup2 mount
+Failed to find cgroup2 mount
+Netid State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                                            
+tcp   LISTEN 0      511          0.0.0.0:3000      0.0.0.0:*    ino:20410 sk:1 cgroup:unreachable:820 <->         
+tcp   LISTEN 0      4096         0.0.0.0:3001      0.0.0.0:*    ino:20403 sk:2 cgroup:unreachable:820 <->         
+tcp   LISTEN 0      128          0.0.0.0:22        0.0.0.0:*    ino:20356 sk:3 cgroup:unreachable:820 <->         
+tcp   LISTEN 0      128             [::]:22           [::]:*    ino:20358 sk:4 cgroup:unreachable:820 v6only:1 <->
+tcp   LISTEN 0      32                 *:21              *:*    ino:21044 sk:5 cgroup:unreachable:820 v6only:0 <->

@@ -1,0 +1,27 @@
+Command: 
+find / \
+    -xdev \
+    -type f \
+    \( -perm -4000 -o -perm -2000 \) \
+    -printf "%M %u:%g %p\n" 2>/dev/null |
+    sort
+
+
+-rwsr-xr-- root:messagebus /usr/lib/dbus-1.0/dbus-daemon-launch-helper
+-rwsr-xr-- root:telnetd /usr/lib/telnetlogin
+-rwsr-xr-x root:root /usr/bin/chfn
+-rwsr-xr-x root:root /usr/bin/chsh
+-rwsr-xr-x root:root /usr/bin/gpasswd
+-rwsr-xr-x root:root /usr/bin/mount
+-rwsr-xr-x root:root /usr/bin/newgrp
+-rwsr-xr-x root:root /usr/bin/passwd
+-rwsr-xr-x root:root /usr/bin/su
+-rwsr-xr-x root:root /usr/bin/sudo
+-rwsr-xr-x root:root /usr/bin/umount
+-rwsr-xr-x root:root /usr/lib/openssh/ssh-keysign
+-rwxr-sr-x root:_ssh /usr/bin/ssh-agent
+-rwxr-sr-x root:crontab /usr/bin/crontab
+-rwxr-sr-x root:shadow /usr/bin/chage
+-rwxr-sr-x root:shadow /usr/bin/expiry
+-rwxr-sr-x root:shadow /usr/sbin/pam_extrausers_chkpwd
+-rwxr-sr-x root:shadow /usr/sbin/unix_chkpwd

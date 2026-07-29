@@ -1,0 +1,60 @@
+Command: 
+find /etc/init.d /etc/rc*.d \
+    -maxdepth 2 \
+    \( -type f -o -type l \) \
+    -printf "%M %u:%g %p -> %l\n" 2>/dev/null |
+    sort
+
+
+-rwxr-xr-x root:root /etc/init.d/cron -> 
+-rwxr-xr-x root:root /etc/init.d/dbus -> 
+-rwxr-xr-x root:root /etc/init.d/fail2ban -> 
+-rwxr-xr-x root:root /etc/init.d/hwclock.sh -> 
+-rwxr-xr-x root:root /etc/init.d/openbsd-inetd -> 
+-rwxr-xr-x root:root /etc/init.d/procps -> 
+-rwxr-xr-x root:root /etc/init.d/ssh -> 
+-rwxr-xr-x root:root /etc/init.d/suricata -> 
+-rwxr-xr-x root:root /etc/init.d/vsftpd -> 
+-rwxr-xr-x root:root /etc/init.d/x11-common -> 
+lrwxrwxrwx root:root /etc/rc0.d/K01fail2ban -> ../init.d/fail2ban
+lrwxrwxrwx root:root /etc/rc0.d/K01openbsd-inetd -> ../init.d/openbsd-inetd
+lrwxrwxrwx root:root /etc/rc0.d/K01suricata -> ../init.d/suricata
+lrwxrwxrwx root:root /etc/rc0.d/K01vsftpd -> ../init.d/vsftpd
+lrwxrwxrwx root:root /etc/rc1.d/K01fail2ban -> ../init.d/fail2ban
+lrwxrwxrwx root:root /etc/rc1.d/K01openbsd-inetd -> ../init.d/openbsd-inetd
+lrwxrwxrwx root:root /etc/rc1.d/K01suricata -> ../init.d/suricata
+lrwxrwxrwx root:root /etc/rc1.d/K01vsftpd -> ../init.d/vsftpd
+lrwxrwxrwx root:root /etc/rc2.d/S01cron -> ../init.d/cron
+lrwxrwxrwx root:root /etc/rc2.d/S01dbus -> ../init.d/dbus
+lrwxrwxrwx root:root /etc/rc2.d/S01fail2ban -> ../init.d/fail2ban
+lrwxrwxrwx root:root /etc/rc2.d/S01openbsd-inetd -> ../init.d/openbsd-inetd
+lrwxrwxrwx root:root /etc/rc2.d/S01ssh -> ../init.d/ssh
+lrwxrwxrwx root:root /etc/rc2.d/S01suricata -> ../init.d/suricata
+lrwxrwxrwx root:root /etc/rc2.d/S01vsftpd -> ../init.d/vsftpd
+lrwxrwxrwx root:root /etc/rc3.d/S01cron -> ../init.d/cron
+lrwxrwxrwx root:root /etc/rc3.d/S01dbus -> ../init.d/dbus
+lrwxrwxrwx root:root /etc/rc3.d/S01fail2ban -> ../init.d/fail2ban
+lrwxrwxrwx root:root /etc/rc3.d/S01openbsd-inetd -> ../init.d/openbsd-inetd
+lrwxrwxrwx root:root /etc/rc3.d/S01ssh -> ../init.d/ssh
+lrwxrwxrwx root:root /etc/rc3.d/S01suricata -> ../init.d/suricata
+lrwxrwxrwx root:root /etc/rc3.d/S01vsftpd -> ../init.d/vsftpd
+lrwxrwxrwx root:root /etc/rc4.d/S01cron -> ../init.d/cron
+lrwxrwxrwx root:root /etc/rc4.d/S01dbus -> ../init.d/dbus
+lrwxrwxrwx root:root /etc/rc4.d/S01fail2ban -> ../init.d/fail2ban
+lrwxrwxrwx root:root /etc/rc4.d/S01openbsd-inetd -> ../init.d/openbsd-inetd
+lrwxrwxrwx root:root /etc/rc4.d/S01ssh -> ../init.d/ssh
+lrwxrwxrwx root:root /etc/rc4.d/S01suricata -> ../init.d/suricata
+lrwxrwxrwx root:root /etc/rc4.d/S01vsftpd -> ../init.d/vsftpd
+lrwxrwxrwx root:root /etc/rc5.d/S01cron -> ../init.d/cron
+lrwxrwxrwx root:root /etc/rc5.d/S01dbus -> ../init.d/dbus
+lrwxrwxrwx root:root /etc/rc5.d/S01fail2ban -> ../init.d/fail2ban
+lrwxrwxrwx root:root /etc/rc5.d/S01openbsd-inetd -> ../init.d/openbsd-inetd
+lrwxrwxrwx root:root /etc/rc5.d/S01ssh -> ../init.d/ssh
+lrwxrwxrwx root:root /etc/rc5.d/S01suricata -> ../init.d/suricata
+lrwxrwxrwx root:root /etc/rc5.d/S01vsftpd -> ../init.d/vsftpd
+lrwxrwxrwx root:root /etc/rc6.d/K01fail2ban -> ../init.d/fail2ban
+lrwxrwxrwx root:root /etc/rc6.d/K01openbsd-inetd -> ../init.d/openbsd-inetd
+lrwxrwxrwx root:root /etc/rc6.d/K01suricata -> ../init.d/suricata
+lrwxrwxrwx root:root /etc/rc6.d/K01vsftpd -> ../init.d/vsftpd
+lrwxrwxrwx root:root /etc/rcS.d/S01procps -> ../init.d/procps
+lrwxrwxrwx root:root /etc/rcS.d/S01x11-common -> ../init.d/x11-common

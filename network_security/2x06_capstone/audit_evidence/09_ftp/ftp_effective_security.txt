@@ -1,0 +1,23 @@
+Command: 
+if [ -r /etc/vsftpd.conf ]; then
+    echo "===== EFFECTIVE VSFTPD SETTINGS ====="
+
+    grep -Ev "^[[:space:]]*(#|$)" /etc/vsftpd.conf |
+    grep -Ei \
+    "^(listen|listen_ipv6|anonymous_enable|local_enable|write_enable|anon_upload_enable|anon_mkdir_write_enable|anon_other_write_enable|chroot_local_user|allow_writeable_chroot|ssl_enable|force_local_logins_ssl|force_local_data_ssl|rsa_cert_file|rsa_private_key_file|pasv_enable|pasv_min_port|pasv_max_port|local_root|anon_root|hide_ids|download_enable|dirlist_enable|file_open_mode|local_umask|xferlog_enable|dual_log_enable|log_ftp_protocol|ftpd_banner|banner_file|userlist_enable|userlist_deny)=" || true
+else
+    echo "/etc/vsftpd.conf unavailable"
+fi
+
+
+===== EFFECTIVE VSFTPD SETTINGS =====
+listen=NO
+listen_ipv6=YES
+anonymous_enable=NO
+local_enable=YES
+write_enable=YES
+xferlog_enable=YES
+rsa_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+rsa_private_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+ssl_enable=NO
+anonymous_enable=YES

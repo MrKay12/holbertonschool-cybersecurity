@@ -1,0 +1,5 @@
+Command: 
+awk -F: '$3 == 0 {print}' /etc/passwd
+
+
+root:x:0:0:root:/root:/bin/bash

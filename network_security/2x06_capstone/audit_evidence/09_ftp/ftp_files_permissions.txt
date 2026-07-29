@@ -1,0 +1,40 @@
+Command: 
+for directory in \
+    /srv/ftp \
+    /var/ftp \
+    /home/ftp
+do
+    if [ -e "$directory" ]; then
+        echo "===== $directory ====="
+
+        find "$directory" \
+            -maxdepth 8 \
+            -printf "%M %u:%g %s %p\\n" 2>/dev/null
+
+        echo
+        echo "===== READABLE CONTENT ====="
+
+        find "$directory" \
+            -maxdepth 8 \
+            -type f \
+            -readable \
+            -size -10M \
+            -print \
+            -exec sh -c '
+                echo "----- $1 -----"
+                sed -n "1,1000p" "$1"
+                echo
+            ' sh {} \; 2>/dev/null
+    fi
+done
+
+
+===== /srv/ftp =====
+drwxr-xr-x root:ftp 4096 /srv/ftp
+-rw-r--r-- root:root 22 /srv/ftp/readme.txt
+
+===== READABLE CONTENT =====
+/srv/ftp/readme.txt
+----- /srv/ftp/readme.txt -----
+Finance invoices here
+

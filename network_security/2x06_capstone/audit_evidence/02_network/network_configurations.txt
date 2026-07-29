@@ -1,0 +1,15 @@
+Command: 
+for file in \
+    /etc/network/interfaces \
+    /etc/network/interfaces.d/* \
+    /etc/netplan/*.yaml \
+    /etc/netplan/*.yml
+do
+    if [ -f "$file" ]; then
+        echo "===== $file ====="
+        cat "$file"
+        echo
+    fi
+done
+
+

@@ -1,0 +1,9 @@
+Command: 
+getent group sudo 2>/dev/null || true
+getent group wheel 2>/dev/null || true
+getent group adm 2>/dev/null || true
+getent group docker 2>/dev/null || true
+
+
+sudo:x:27:
+adm:x:4:

@@ -1,0 +1,35 @@
+Command: 
+if [ -d /etc/suricata ]; then
+    find /etc/suricata \
+        -maxdepth 3 \
+        -type f \
+        -print 2>/dev/null
+fi
+
+ps auxww | grep -E "[s]uricata" || true
+
+
+/etc/suricata/classification.config
+/etc/suricata/reference.config
+/etc/suricata/threshold.config
+/etc/suricata/suricata.yaml
+/etc/suricata/rules/http-events.rules
+/etc/suricata/rules/modbus-events.rules
+/etc/suricata/rules/files.rules
+/etc/suricata/rules/smb-events.rules
+/etc/suricata/rules/dhcp-events.rules
+/etc/suricata/rules/http2-events.rules
+/etc/suricata/rules/mqtt-events.rules
+/etc/suricata/rules/nfs-events.rules
+/etc/suricata/rules/decoder-events.rules
+/etc/suricata/rules/ntp-events.rules
+/etc/suricata/rules/tls-events.rules
+/etc/suricata/rules/stream-events.rules
+/etc/suricata/rules/kerberos-events.rules
+/etc/suricata/rules/dns-events.rules
+/etc/suricata/rules/app-layer-events.rules
+/etc/suricata/rules/ipsec-events.rules
+/etc/suricata/rules/dnp3-events.rules
+/etc/suricata/rules/smtp-events.rules
+/etc/suricata/rules/local.rules
+student     4044  0.0  0.1   4784  3192 pts/0    S+   14:09   0:00 bash -c  if [ -d /etc/suricata ]; then     find /etc/suricata \         -maxdepth 3 \         -type f \         -print 2>/dev/null fi  ps auxww | grep -E "[s]uricata" || true 

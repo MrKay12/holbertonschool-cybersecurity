@@ -1,0 +1,47 @@
+Command: 
+for process in /proc/[0-9]*; do
+    [ -r "$process/cmdline" ] || continue
+
+    pid="${process##*/}"
+    cmd="$(tr "\0" " " < "$process/cmdline" 2>/dev/null)"
+
+    if [ -n "$cmd" ]; then
+        printf "%s: %s\n" "$pid" "$cmd"
+    fi
+done
+
+
+1: /bin/sh -c echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd && service ssh restart > /dev/null && /etc/run.sh 
+105: /usr/node /usr/out/server-main.js --host 0.0.0.0 --connection-token=18818412c63a431594f9fbc4f129e696 --log off 2 
+116: /usr/node /usr/out/bootstrap-fork --type=ptyHost --logsPath /root/.openvscode-server/data/logs/20260729T131425 
+152: sshd: student [priv] 
+163: sshd: student@pts/0 
+164: -bash 
+27: /bin/bash /etc/run.sh 
+3537: /usr/sbin/CRON -P 
+3538: /bin/sh -c /usr/bin/curl http://192.168.1.200/ping 
+3539: /usr/bin/curl http://192.168.1.200/ping 
+3545: /usr/sbin/CRON -P 
+3546: /bin/sh -c /usr/bin/curl http://192.168.1.200/ping 
+3547: /usr/bin/curl http://192.168.1.200/ping 
+3562: /usr/sbin/CRON -P 
+3563: /bin/sh -c /usr/bin/curl http://192.168.1.200/ping 
+3564: /usr/bin/curl http://192.168.1.200/ping 
+3565: bash /home/student/audit.sh 
+3652: bash -c 
+for process in /proc/[0-9]*; do
+    [ -r "$process/cmdline" ] || continue
+
+    pid="${process##*/}"
+    cmd="$(tr "\0" " " < "$process/cmdline" 2>/dev/null)"
+
+    if [ -n "$cmd" ]; then
+        printf "%s: %s\n" "$pid" "$cmd"
+    fi
+done
+ 
+63: /usr/sbin/vsftpd 
+78: /usr/sbin/cron -P 
+89: sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups 
+91: ttyd --cwd /root --writable --credential=18818412c63a431594f9fbc4f129e696:18818412c63a431594f9fbc4f129e696 -p 3001 /bin/bash 
+98: sh /usr/bin/openvscode-server --host 0.0.0.0 --connection-token=18818412c63a431594f9fbc4f129e696 --log off 2 

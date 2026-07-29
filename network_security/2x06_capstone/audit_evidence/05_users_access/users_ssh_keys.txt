@@ -1,0 +1,17 @@
+Command: 
+find /root /home \
+    -xdev \
+    -type f \
+    \( -name authorized_keys -o -name authorized_keys2 \) \
+    -printf "%M %u:%g %p\n" \
+    -exec sh -c '
+        echo "===== $1 ====="
+        cat "$1"
+        echo
+    ' sh {} \; 2>/dev/null
+
+
+-rw------- student:student /home/student/.ssh/authorized_keys
+===== /home/student/.ssh/authorized_keys =====
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMFinKaQvnNPT2gqRFkNJ9b+gtDUQvXmH9goD9bJdrdH 9331@holbertonstudents.com
+

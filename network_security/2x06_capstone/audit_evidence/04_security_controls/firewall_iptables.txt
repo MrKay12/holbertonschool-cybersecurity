@@ -1,0 +1,22 @@
+Command: 
+if command -v iptables >/dev/null 2>&1; then
+    echo "===== FILTER ====="
+    iptables -L -n -v --line-numbers
+    echo
+    iptables -S
+    echo
+
+    echo "===== NAT ====="
+    iptables -t nat -L -n -v --line-numbers
+    echo
+    iptables -t nat -S
+    echo
+
+    echo "===== MANGLE ====="
+    iptables -t mangle -L -n -v --line-numbers
+else
+    echo "iptables unavailable"
+fi
+
+
+iptables unavailable

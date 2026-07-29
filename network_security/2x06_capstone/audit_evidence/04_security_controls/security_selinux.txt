@@ -1,0 +1,10 @@
+Command: 
+if command -v getenforce >/dev/null 2>&1; then
+    getenforce
+    sestatus 2>/dev/null || true
+else
+    echo "SELinux unavailable"
+fi
+
+
+SELinux unavailable

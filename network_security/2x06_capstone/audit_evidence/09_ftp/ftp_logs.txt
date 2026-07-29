@@ -1,0 +1,27 @@
+Command: 
+for file in \
+    /var/log/vsftpd.log \
+    /var/log/xferlog \
+    /var/log/proftpd/proftpd.log \
+    /var/log/auth.log \
+    /var/log/syslog
+do
+    if [ -r "$file" ]; then
+        echo "===== $file ====="
+
+        grep -Ei \
+        "ftp|vsftpd|login|anonymous|upload|download|connect|failed|success|FLAG\\{" \
+        "$file" 2>/dev/null |
+        tail -n 1000
+
+        echo
+    fi
+done
+
+
+===== /var/log/auth.log =====
+Feb 12 12:00:00 sandbox sshd[123]: Failed password for root from 10.10.10.10 port 5555 ssh2
+Failed password for invalid user admin from 10.10.10.66 port 4444 ssh2
+Failed password for invalid user admin from 10.10.10.66 port 4444 ssh2
+Failed password for invalid user admin from 10.10.10.66 port 4444 ssh2
+

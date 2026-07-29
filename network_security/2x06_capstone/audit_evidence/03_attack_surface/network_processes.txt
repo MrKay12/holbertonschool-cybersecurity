@@ -1,0 +1,19 @@
+Command: 
+ps auxww |
+grep -Ei \
+"[s]shd|[v]sftpd|[p]roftpd|[p]ure-ftpd|[t]tyd|[o]penvscode|[c]ode-server|[a]pache|[n]ginx|[m]ysql|[m]ariadb|[p]ostgres|[s]uricata|[s]nort|[d]nsmasq|[n]amed|[s]quid|[t]elnet|[c]url|[w]get" || true
+
+
+root          63  0.0  0.2  10160  4324 ?        S    13:14   0:00 /usr/sbin/vsftpd
+root          89  0.0  0.2  15440  5676 ?        Ss   13:14   0:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups
+root          91  0.0  0.2   9916  5040 ?        S    13:14   0:00 ttyd --cwd /root --writable --credential=18818412c63a431594f9fbc4f129e696:18818412c63a431594f9fbc4f129e696 -p 3001 /bin/bash
+root          98  0.0  0.0   2892   960 ?        S    13:14   0:00 sh /usr/bin/openvscode-server --host 0.0.0.0 --connection-token=18818412c63a431594f9fbc4f129e696 --log off 2
+root         116  0.0  2.2 624220 44628 ?        Sl   13:14   0:00 /usr/node /usr/out/bootstrap-fork --type=ptyHost --logsPath /root/.openvscode-server/data/logs/20260729T131425
+root         152  0.0  0.5  16892 10640 ?        Ss   13:16   0:00 sshd: student [priv]
+student      163  0.0  0.4  17168  8032 ?        S    13:16   0:00 sshd: student@pts/0
+root        3538  0.0  0.0   2892   972 ?        Ss   14:07   0:00 /bin/sh -c /usr/bin/curl http://192.168.1.200/ping
+root        3539  0.0  0.4  19428  8424 ?        S    14:07   0:00 /usr/bin/curl http://192.168.1.200/ping
+root        3546  0.0  0.0   2892   980 ?        Ss   14:08   0:00 /bin/sh -c /usr/bin/curl http://192.168.1.200/ping
+root        3547  0.0  0.4  19428  8480 ?        S    14:08   0:00 /usr/bin/curl http://192.168.1.200/ping
+root        3563  0.0  0.0   2892   952 ?        Ss   14:09   0:00 /bin/sh -c /usr/bin/curl http://192.168.1.200/ping
+root        3564  0.0  0.4  19428  8480 ?        S    14:09   0:00 /usr/bin/curl http://192.168.1.200/ping

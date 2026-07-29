@@ -1,0 +1,9 @@
+Command: 
+if command -v nft >/dev/null 2>&1; then
+    nft list ruleset
+else
+    echo "nft unavailable"
+fi
+
+
+Operation not permitted (you must be root)

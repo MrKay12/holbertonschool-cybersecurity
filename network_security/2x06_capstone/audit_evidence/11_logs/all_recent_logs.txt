@@ -1,0 +1,19 @@
+Command: 
+find /var/log \
+    -maxdepth 3 \
+    -type f \
+    -readable \
+    -printf "%M %u:%g %s %p\n" 2>/dev/null
+
+
+-rw-r--r-- root:root 32032 /var/log/faillog
+-rw-r--r-- root:root 64549 /var/log/bootstrap.log
+-rw-r--r-- root:root 389772 /var/log/dpkg.log
+-rw-rw-r-- root:utmp 384 /var/log/wtmp
+-rw-r--r-- root:root 18182 /var/log/alternatives.log
+-rw-rw-r-- root:utmp 292292 /var/log/lastlog
+-rw-r--r-- root:root 39740 /var/log/apt/history.log
+-rw-r--r-- root:root 18880 /var/log/apt/eipp.log.xz
+-rw-r--r-- root:root 365 /var/log/auth.log
+-rw-r--r-- root:root 26 /var/log/suricata/fast.log
+-rw-r--r-- root:root 484 /var/log/fontconfig.log

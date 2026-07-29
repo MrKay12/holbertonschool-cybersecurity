@@ -1,0 +1,9 @@
+Command: 
+if command -v sshd >/dev/null 2>&1; then
+    sshd -T 2>&1
+else
+    echo "sshd unavailable"
+fi
+
+
+sshd: no hostkeys available -- exiting.

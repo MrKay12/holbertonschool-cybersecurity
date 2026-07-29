@@ -1,0 +1,9 @@
+Command: 
+if command -v ufw >/dev/null 2>&1; then
+    ufw status verbose
+else
+    echo "ufw unavailable"
+fi
+
+
+ufw unavailable

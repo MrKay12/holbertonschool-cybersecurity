@@ -1,0 +1,5 @@
+Command: 
+crontab -l 2>&1 || true
+
+
+no crontab for student

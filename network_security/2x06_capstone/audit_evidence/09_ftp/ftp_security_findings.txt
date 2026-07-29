@@ -1,0 +1,65 @@
+Command: 
+if [ -r /etc/vsftpd.conf ]; then
+    anonymous_enable="$(
+        awk -F= '
+        /^[[:space:]]*anonymous_enable=/ {
+            gsub(/[[:space:]]/, "", $2)
+            value=toupper($2)
+        }
+        END { print value }
+        ' /etc/vsftpd.conf
+    )"
+
+    ssl_enable="$(
+        awk -F= '
+        /^[[:space:]]*ssl_enable=/ {
+            gsub(/[[:space:]]/, "", $2)
+            value=toupper($2)
+        }
+        END { print value }
+        ' /etc/vsftpd.conf
+    )"
+
+    write_enable="$(
+        awk -F= '
+        /^[[:space:]]*write_enable=/ {
+            gsub(/[[:space:]]/, "", $2)
+            value=toupper($2)
+        }
+        END { print value }
+        ' /etc/vsftpd.conf
+    )"
+
+    echo "anonymous_enable=${anonymous_enable:-DEFAULT/UNKNOWN}"
+    echo "ssl_enable=${ssl_enable:-DEFAULT/UNKNOWN}"
+    echo "write_enable=${write_enable:-DEFAULT/UNKNOWN}"
+
+    if [ "$anonymous_enable" = "YES" ]; then
+        echo "[HIGH] Anonymous FTP access is enabled"
+    fi
+
+    if [ "$ssl_enable" != "YES" ]; then
+        echo "[HIGH] FTP communications are not protected by TLS"
+    fi
+
+    if [ "$write_enable" = "YES" ]; then
+        echo "[MEDIUM] FTP write operations are enabled"
+    fi
+fi
+
+if find /srv/ftp /var/ftp /home/ftp \
+    -type d \
+    -perm -0002 \
+    -print -quit 2>/dev/null |
+    grep -q .
+then
+    echo "[CRITICAL] A world-writable FTP directory was detected"
+fi
+
+
+anonymous_enable=YES
+ssl_enable=NO
+write_enable=YES
+[HIGH] Anonymous FTP access is enabled
+[HIGH] FTP communications are not protected by TLS
+[MEDIUM] FTP write operations are enabled

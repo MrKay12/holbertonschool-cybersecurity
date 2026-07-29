@@ -1,0 +1,24 @@
+Command: 
+echo "===== PROCESSES ====="
+ps auxww | grep -E "[v]sftpd|[p]roftpd|[p]ure-ftpd" || true
+
+echo
+echo "===== LISTENING PORTS ====="
+ss -ltnp 2>/dev/null | grep -E "(:21[[:space:]]|:20[[:space:]])" || true
+
+echo
+echo "===== INSTALLED PACKAGES ====="
+if command -v dpkg-query >/dev/null 2>&1; then
+    dpkg-query -W vsftpd proftpd-basic pure-ftpd 2>/dev/null || true
+fi
+
+
+===== PROCESSES =====
+root          63  0.0  0.2  10160  4324 ?        S    13:14   0:00 /usr/sbin/vsftpd
+student     4251  0.0  0.1   4784  3328 pts/0    S+   14:09   0:00 bash -c  echo "===== PROCESSES =====" ps auxww | grep -E "[v]sftpd|[p]roftpd|[p]ure-ftpd" || true  echo echo "===== LISTENING PORTS =====" ss -ltnp 2>/dev/null | grep -E "(:21[[:space:]]|:20[[:space:]])" || true  echo echo "===== INSTALLED PACKAGES =====" if command -v dpkg-query >/dev/null 2>&1; then     dpkg-query -W vsftpd proftpd-basic pure-ftpd 2>/dev/null || true fi 
+
+===== LISTENING PORTS =====
+LISTEN 0      32                 *:21              *:*          
+
+===== INSTALLED PACKAGES =====
+vsftpd	3.0.5-0ubuntu1.1

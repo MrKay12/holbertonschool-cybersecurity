@@ -1,0 +1,14 @@
+Command: 
+ip -d link show type bridge 2>/dev/null || true
+echo
+ip -d link show type vlan 2>/dev/null || true
+echo
+bridge link 2>/dev/null || true
+echo
+bridge vlan show 2>/dev/null || true
+
+
+
+
+
+port              vlan-id  

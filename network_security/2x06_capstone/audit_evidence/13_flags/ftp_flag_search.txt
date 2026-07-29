@@ -1,0 +1,17 @@
+Command: 
+grep -RniE \
+"FLAG\\{[^}]+\\}" \
+/etc/vsftpd.conf \
+/etc/vsftpd \
+/etc/ftpusers \
+/etc/pam.d/vsftpd \
+/srv/ftp \
+/var/ftp \
+/home/ftp \
+/var/log/vsftpd.log \
+/var/log/xferlog \
+/var/log/proftpd \
+2>/dev/null || true
+
+
+/etc/vsftpd.conf:157:# FLAG{CL34RT3XT_FTP}

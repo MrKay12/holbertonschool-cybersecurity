@@ -1,0 +1,6 @@
+Command: 
+cat /proc/net/arp 2>/dev/null || true
+
+
+IP address       HW type     Flags       HW address            Mask     Device
+10.42.0.1        0x1         0x2         0a:b0:93:32:a4:d0     *        eth1

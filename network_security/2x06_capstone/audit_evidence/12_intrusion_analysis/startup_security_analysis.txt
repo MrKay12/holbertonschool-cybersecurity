@@ -1,0 +1,28 @@
+Command: 
+for file in /etc/run.sh /entrypoint.sh /docker-entrypoint.sh /usr/local/bin/entrypoint.sh; do
+    [ -r "$file" ] || continue
+
+    echo "===== $file ====="
+
+    grep -nE     "fake attack log|brute force source|chpasswd|passwd[[:space:]]|nft[[:space:]]+flush[[:space:]]+ruleset|ttyd|openvscode-server|code-server|setup_ssh|auth\.log|suricata/fast\.log"     "$file" 2>/dev/null || true
+
+    echo
+done
+
+
+===== /etc/run.sh =====
+17:echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd
+20:python3 /etc/ssh/setup_ssh.py
+21:rm /etc/ssh/setup_ssh.py
+34:nft flush ruleset 2>/dev/null
+36:# fake attack log
+37:echo "Feb 12 12:00:00 sandbox sshd[123]: Failed password for root from 10.10.10.10 port 5555 ssh2" >> /var/log/auth.log
+38:echo "FLAG{1DS_D3T3CT10N_W0RKS}" >> /var/log/suricata/fast.log
+40:# brute force source
+43:echo "Failed password for invalid user admin from $ATTACK_IP port 4444 ssh2" >> /var/log/auth.log
+44:echo "Failed password for invalid user admin from $ATTACK_IP port 4444 ssh2" >> /var/log/auth.log
+45:echo "Failed password for invalid user admin from $ATTACK_IP port 4444 ssh2" >> /var/log/auth.log
+46:echo "Accepted password for root from 192.168.1.99 port 5555 ssh2" >> /var/log/auth.log
+49:ttyd --cwd /root --writable --credential=$(echo $HOSTNAME | cut -d '-' -f 1):$(echo $HOSTNAME | cut -d '-' -f 1) -p 3001 /bin/bash &
+52:openvscode-server --host 0.0.0.0 --connection-token=$(echo $HOSTNAME | cut -d '-' -f 1) --log off 2&>1
+

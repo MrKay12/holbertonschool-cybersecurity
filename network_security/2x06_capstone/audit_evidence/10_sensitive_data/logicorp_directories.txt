@@ -1,0 +1,34 @@
+Command: 
+for directory in \
+    /etc/logicorp \
+    /opt/logicorp \
+    /srv/ftp \
+    /var/lib/logicorp \
+    /usr/local/logicorp
+do
+    if [ -e "$directory" ]; then
+        echo "===== $directory ====="
+        find "$directory" \
+            -maxdepth 6 \
+            -printf "%M %u:%g %s %p\n" 2>/dev/null
+        echo
+    fi
+done
+
+
+===== /etc/logicorp =====
+drwxr-xr-x root:root 4096 /etc/logicorp
+-rw-r--r-- root:root 59 /etc/logicorp/db.conf
+-rw-r--r-- root:root 28 /etc/logicorp/telnet.flag
+-rw-r--r-- root:root 45 /etc/logicorp/network.conf
+-rw-r--r-- root:root 57 /etc/logicorp/security.policy
+
+===== /opt/logicorp =====
+drwxr-xr-x root:root 4096 /opt/logicorp
+drwxr-xr-x root:root 4096 /opt/logicorp/backups
+-rw-r--r-- root:root 59 /opt/logicorp/backups/backup.sql
+
+===== /srv/ftp =====
+drwxr-xr-x root:ftp 4096 /srv/ftp
+-rw-r--r-- root:root 22 /srv/ftp/readme.txt
+

@@ -1,0 +1,53 @@
+Command: 
+getent passwd telnetd 2>/dev/null || true
+
+find /etc /usr /var \
+    -xdev \
+    \( -iname "*telnet*" -o -iname "*rsh*" -o -iname "*rexec*" \) \
+    -printf "%M %u:%g %p\n" 2>/dev/null
+
+
+telnetd:x:107:110::/nonexistent:/usr/sbin/nologin
+lrwxrwxrwx root:root /etc/alternatives/telnet
+lrwxrwxrwx root:root /etc/alternatives/rsh
+-rw-r--r-- root:root /etc/logicorp/telnet.flag
+-rw-r--r-- root:root /etc/snort/rules/telnet.rules
+-rwxr-xr-x root:root /usr/sbin/in.telnetd
+-rwxr-xr-x root:root /usr/bin/telnet.netkit
+lrwxrwxrwx root:root /usr/bin/telnet
+lrwxrwxrwx root:root /usr/bin/rsh
+-rw-r--r-- root:root /usr/include/python3.10/marshal.h
+-rw-r--r-- root:root /usr/include/arpa/telnet.h
+-rw-r--r-- root:root /usr/share/man/man8/telnetlogin.8.gz
+-rw-r--r-- root:root /usr/share/man/man8/in.telnetd.8.gz
+-rw-r--r-- root:root /usr/share/lintian/overrides/telnetd
+-rw-r--r-- root:root /usr/share/lintian/overrides/telnet
+drwxr-xr-x root:root /usr/share/doc/telnetd
+drwxr-xr-x root:root /usr/share/doc/telnet
+lrwxrwxrwx root:root /usr/share/terminfo/t/tgtelnet
+-rw-r--r-- root:root /usr/share/menu/telnet
+-rw-r--r-- root:root /usr/share/perl5/URI/telnet.pm
+-rw-r--r-- root:root /usr/share/emacs/27.1/lisp/net/telnet.el.gz
+-rw-r--r-- root:root /usr/share/emacs/27.1/lisp/net/telnet.elc
+-rw-r--r-- root:root /usr/share/vim/vim82/compiler/powershell.vim
+-rwxr-xr-x root:root /usr/lib/apt/methods/rsh
+-rwsr-xr-- root:telnetd /usr/lib/telnetlogin
+-rw-r--r-- root:root /usr/lib/python3/dist-packages/gi/overrides/GIMarshallingTests.py
+-rw-r--r-- root:root /usr/lib/python3/dist-packages/gi/overrides/__pycache__/GIMarshallingTests.cpython-310.pyc
+-rw-r--r-- root:root /usr/lib/python3.10/telnetlib.py
+-rw-r--r-- root:root /usr/lib/python3.10/__pycache__/telnetlib.cpython-310.pyc
+drwxr-xr-x root:root /usr/extensions/powershell
+-rw-r--r-- root:root /usr/extensions/powershell/syntaxes/powershell.tmLanguage.json
+-rw-r--r-- root:root /var/lib/dpkg/alternatives/telnet
+-rw-r--r-- root:root /var/lib/dpkg/alternatives/rsh
+-rw-r--r-- root:root /var/lib/dpkg/info/telnetd.md5sums
+-rwxr-xr-x root:root /var/lib/dpkg/info/telnetd.preinst
+-rwxr-xr-x root:root /var/lib/dpkg/info/telnetd.postrm
+-rwxr-xr-x root:root /var/lib/dpkg/info/telnetd.postinst
+-rw-r--r-- root:root /var/lib/dpkg/info/telnetd.list
+-rwxr-xr-x root:root /var/lib/dpkg/info/telnetd.prerm
+-rw-r--r-- root:root /var/lib/dpkg/info/telnet.list
+-rw-r--r-- root:root /var/lib/dpkg/info/telnet.md5sums
+-rwxr-xr-x root:root /var/lib/dpkg/info/telnet.postinst
+-rwxr-xr-x root:root /var/lib/dpkg/info/telnet.postrm
+-rwxr-xr-x root:root /var/lib/dpkg/info/telnet.prerm

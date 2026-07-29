@@ -1,0 +1,4 @@
+Command: ps -p 1 -o pid,ppid,user,group,comm,args
+
+    PID    PPID USER     GROUP    COMMAND         COMMAND
+      1       0 root     root     sh              /bin/sh -c echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd && service ssh restart > /dev/null && /etc/run.sh

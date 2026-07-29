@@ -1,0 +1,100 @@
+Command: 
+find \
+    /etc/cron.d \
+    /etc/init.d \
+    /etc/rc.local \
+    /etc/profile \
+    /etc/profile.d \
+    /root \
+    /home \
+    -maxdepth 4 \
+    -type f \
+    -print 2>/dev/null
+
+
+/etc/cron.d/e2scrub_all
+/etc/cron.d/logicorp
+/etc/cron.d/.placeholder
+/etc/init.d/hwclock.sh
+/etc/init.d/procps
+/etc/init.d/openbsd-inetd
+/etc/init.d/suricata
+/etc/init.d/cron
+/etc/init.d/vsftpd
+/etc/init.d/fail2ban
+/etc/init.d/ssh
+/etc/init.d/x11-common
+/etc/init.d/dbus
+/etc/profile
+/etc/profile.d/01-locale-fix.sh
+/etc/profile.d/debuginfod.csh
+/etc/profile.d/debuginfod.sh
+/home/student/.bash_logout
+/home/student/.profile
+/home/student/.bashrc
+/home/student/recovered_flags.txt
+/home/student/audit.sh
+/home/student/.ssh/authorized_keys
+/home/student/.cache/motd.legal-displayed
+/home/student/audit_evidence/05_users_access/users_admin_groups.txt
+/home/student/audit_evidence/05_users_access/users_ssh_keys.txt
+/home/student/audit_evidence/05_users_access/users_passwd.txt
+/home/student/audit_evidence/05_users_access/users_login_capable.txt
+/home/student/audit_evidence/05_users_access/users_sudoers.txt
+/home/student/audit_evidence/05_users_access/users_groups.txt
+/home/student/audit_evidence/05_users_access/users_uid0.txt
+/home/student/audit_evidence/07_services/services_processes.txt
+/home/student/audit_evidence/07_services/services_installed_relevant.txt
+/home/student/audit_evidence/07_services/services_startup.txt
+/home/student/audit_evidence/07_services/services_status.txt
+/home/student/audit_evidence/03_attack_surface/process_command_lines.txt
+/home/student/audit_evidence/03_attack_surface/network_processes.txt
+/home/student/audit_evidence/03_attack_surface/ports_listening.txt
+/home/student/audit_evidence/03_attack_surface/ports_udp.txt
+/home/student/audit_evidence/03_attack_surface/ports_tcp.txt
+/home/student/audit_evidence/03_attack_surface/connections_all.txt
+/home/student/audit_evidence/03_attack_surface/active_connections_targets.txt
+/home/student/audit_evidence/12_intrusion_analysis/startup_security_analysis.txt
+/home/student/audit_evidence/12_intrusion_analysis/startup_password_changes.txt
+/home/student/audit_evidence/12_intrusion_analysis/startup_injected_log_entries.txt
+/home/student/audit_evidence/01_system/system_environment.txt
+/home/student/audit_evidence/01_system/system_os.txt
+/home/student/audit_evidence/01_system/system_mounts.txt
+/home/student/audit_evidence/01_system/system_block_devices.txt
+/home/student/audit_evidence/01_system/system_hostname.txt
+/home/student/audit_evidence/01_system/system_identity.txt
+/home/student/audit_evidence/01_system/system_uname.txt
+/home/student/audit_evidence/01_system/system_processes.txt
+/home/student/audit_evidence/01_system/system_startup_scripts.txt
+/home/student/audit_evidence/01_system/system_pid1.txt
+/home/student/audit_evidence/01_system/system_uptime.txt
+/home/student/audit_evidence/01_system/system_disks.txt
+/home/student/audit_evidence/02_network/network_addresses_short.txt
+/home/student/audit_evidence/02_network/network_neighbors.txt
+/home/student/audit_evidence/02_network/network_addresses.txt
+/home/student/audit_evidence/02_network/network_dns.txt
+/home/student/audit_evidence/02_network/network_arp.txt
+/home/student/audit_evidence/02_network/network_links.txt
+/home/student/audit_evidence/02_network/network_bridges_vlans.txt
+/home/student/audit_evidence/02_network/network_forwarding.txt
+/home/student/audit_evidence/02_network/network_configurations.txt
+/home/student/audit_evidence/02_network/network_routes_ipv6.txt
+/home/student/audit_evidence/02_network/network_routes.txt
+/home/student/audit_evidence/02_network/network_hosts.txt
+/home/student/audit_evidence/02_network/network_rules.txt
+/home/student/audit_evidence/08_persistence/cron_root.txt
+/home/student/audit_evidence/08_persistence/cron_system.txt
+/home/student/audit_evidence/08_persistence/cron_all_users.txt
+/home/student/audit_evidence/08_persistence/cron_current_user.txt
+/home/student/audit_evidence/08_persistence/persistence_files.txt
+/home/student/audit_evidence/08_persistence/cron_runtime_processes.txt
+/home/student/audit_evidence/06_ssh/ssh_security_values.txt
+/home/student/audit_evidence/06_ssh/ssh_configuration.txt
+/home/student/audit_evidence/06_ssh/ssh_effective.txt
+/home/student/audit_evidence/04_security_controls/firewall_nftables.txt
+/home/student/audit_evidence/04_security_controls/security_apparmor.txt
+/home/student/audit_evidence/04_security_controls/firewall_iptables.txt
+/home/student/audit_evidence/04_security_controls/security_suricata.txt
+/home/student/audit_evidence/04_security_controls/security_fail2ban.txt
+/home/student/audit_evidence/04_security_controls/firewall_ufw.txt
+/home/student/audit_evidence/04_security_controls/security_selinux.txt

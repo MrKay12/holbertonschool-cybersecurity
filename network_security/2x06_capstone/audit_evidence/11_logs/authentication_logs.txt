@@ -1,0 +1,27 @@
+Command: 
+for file in \
+    /var/log/auth.log \
+    /var/log/secure \
+    /var/log/syslog \
+    /var/log/messages
+do
+    if [ -r "$file" ]; then
+        echo "===== $file ====="
+
+        grep -Ei \
+        "accepted|failed|invalid user|root|sudo|authentication failure|session opened|session closed|blocked|ban|unban|FLAG\{" \
+        "$file" 2>/dev/null |
+        tail -n 500
+
+        echo
+    fi
+done
+
+
+===== /var/log/auth.log =====
+Feb 12 12:00:00 sandbox sshd[123]: Failed password for root from 10.10.10.10 port 5555 ssh2
+Failed password for invalid user admin from 10.10.10.66 port 4444 ssh2
+Failed password for invalid user admin from 10.10.10.66 port 4444 ssh2
+Failed password for invalid user admin from 10.10.10.66 port 4444 ssh2
+Accepted password for root from 192.168.1.99 port 5555 ssh2
+

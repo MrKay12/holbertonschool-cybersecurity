@@ -1,0 +1,18 @@
+Command: 
+if command -v service >/dev/null 2>&1; then
+    service --status-all
+else
+    echo "service command unavailable"
+fi
+
+
+ [ + ]  cron
+ [ - ]  dbus
+ [ - ]  fail2ban
+ [ ? ]  hwclock.sh
+ [ - ]  openbsd-inetd
+ [ - ]  procps
+ [ + ]  ssh
+ [ + ]  suricata
+ [ + ]  vsftpd
+ [ - ]  x11-common

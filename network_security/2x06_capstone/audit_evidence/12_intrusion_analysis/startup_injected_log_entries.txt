@@ -1,0 +1,18 @@
+Command: 
+for file in /etc/run.sh /entrypoint.sh /docker-entrypoint.sh /usr/local/bin/entrypoint.sh; do
+    [ -r "$file" ] || continue
+
+    echo "===== $file ====="
+    grep -nE     "echo .*(auth\.log|secure|syslog|messages|suricata/fast\.log)"     "$file" 2>/dev/null || true
+    echo
+done
+
+
+===== /etc/run.sh =====
+37:echo "Feb 12 12:00:00 sandbox sshd[123]: Failed password for root from 10.10.10.10 port 5555 ssh2" >> /var/log/auth.log
+38:echo "FLAG{1DS_D3T3CT10N_W0RKS}" >> /var/log/suricata/fast.log
+43:echo "Failed password for invalid user admin from $ATTACK_IP port 4444 ssh2" >> /var/log/auth.log
+44:echo "Failed password for invalid user admin from $ATTACK_IP port 4444 ssh2" >> /var/log/auth.log
+45:echo "Failed password for invalid user admin from $ATTACK_IP port 4444 ssh2" >> /var/log/auth.log
+46:echo "Accepted password for root from 192.168.1.99 port 5555 ssh2" >> /var/log/auth.log
+

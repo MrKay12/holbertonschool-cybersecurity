@@ -1,0 +1,16 @@
+Command: 
+for file in /etc/sudoers /etc/sudoers.d/*; do
+    if [ -f "$file" ]; then
+        echo "===== $file ====="
+        grep -vE "^[[:space:]]*(#|$)" "$file" 2>/dev/null || true
+        echo
+    fi
+done
+
+
+===== /etc/sudoers =====
+
+===== /etc/sudoers.d/README =====
+
+===== /etc/sudoers.d/debug =====
+

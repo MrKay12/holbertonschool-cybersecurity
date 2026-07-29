@@ -1,0 +1,11 @@
+Command: df -hT
+
+Filesystem     Type     Size  Used Avail Use% Mounted on
+overlay        overlay   21G  2.7G   17G  14% /
+tmpfs          tmpfs     64M     0   64M   0% /dev
+shm            tmpfs    948M     0  948M   0% /dev/shm
+tmpfs          tmpfs    948M     0  948M   0% /sys/fs/cgroup
+/dev/nvme1n1   ext4      21G  2.7G   17G  14% /etc/hosts
+tmpfs          tmpfs    948M     0  948M   0% /proc/acpi
+tmpfs          tmpfs    948M     0  948M   0% /sys/firmware
+tmpfs          tmpfs    948M     0  948M   0% /proc/scsi

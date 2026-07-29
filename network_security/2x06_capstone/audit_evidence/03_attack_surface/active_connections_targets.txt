@@ -1,0 +1,15 @@
+Command: 
+ss -antup 2>/dev/null |
+grep -vE "127\.0\.0\.1|::1" || true
+
+
+Netid State    Recv-Q Send-Q Local Address:Port   Peer Address:Port Process
+tcp   LISTEN   0      511          0.0.0.0:3000        0.0.0.0:*           
+tcp   LISTEN   0      4096         0.0.0.0:3001        0.0.0.0:*           
+tcp   LISTEN   0      128          0.0.0.0:22          0.0.0.0:*           
+tcp   SYN-SENT 0      1       10.42.85.186:33582 192.168.1.200:80          
+tcp   SYN-SENT 0      1       10.42.85.186:51408 192.168.1.200:80          
+tcp   ESTAB    0      0       10.42.85.186:22    10.43.223.216:53818       
+tcp   SYN-SENT 0      1       10.42.85.186:41730 192.168.1.200:80          
+tcp   LISTEN   0      128             [::]:22             [::]:*           
+tcp   LISTEN   0      32                 *:21                *:*           

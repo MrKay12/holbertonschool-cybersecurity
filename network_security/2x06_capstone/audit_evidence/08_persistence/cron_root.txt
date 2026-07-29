@@ -1,0 +1,5 @@
+Command: 
+crontab -u root -l 2>&1 || true
+
+
+must be privileged to use -u

@@ -1,0 +1,109 @@
+Command: 
+grep -RniE \
+"FLAG\{|password|passwd|credential|secret|token|api[_-]?key|root_password|PermitRootLogin|PasswordAuthentication" \
+/etc/logicorp \
+/opt/logicorp \
+/srv/ftp \
+/var/ftp \
+/home/ftp \
+/etc/vsftpd.conf \
+/etc/vsftpd \
+/etc/ftpusers \
+/etc/pam.d/vsftpd \
+/var/log/vsftpd.log \
+/var/log/xferlog \
+/var/log/proftpd \
+/etc/cron.d \
+/etc/fail2ban \
+/var/backups \
+2>/dev/null || true
+
+
+/etc/logicorp/db.conf:3:# FLAG{Z3R0_TRU5T_Z0N3S}
+/etc/logicorp/telnet.flag:1:# FLAG{UNN3C3SS4RY_S3RV1C3}
+/etc/logicorp/network.conf:2:# FLAG{AUD1T_FL4T_N3TW0RK}
+/etc/logicorp/security.policy:2:FLAG{R00T_L0G1N_D3T3CT3D}
+/opt/logicorp/backups/backup.sql:1:root_password_backup=123456
+/opt/logicorp/backups/backup.sql:2:FLAG{S3NS1T1V3_B4CKUP_EXP0S3D}
+/etc/vsftpd.conf:157:# FLAG{CL34RT3XT_FTP}
+/etc/cron.d/logicorp:2:# FLAG{CR0N_B4CKD00R}
+/etc/fail2ban/action.d/route.conf:11:#   - It's per host, ideal as action against ssh password bruteforcing to block further attack attempts.
+/etc/fail2ban/action.d/route.conf:15:#   - Blocking is per IP and NOT per service, but ideal as action against ssh password bruteforcing hosts
+/etc/fail2ban/action.d/blocklist_de.conf:10:# This action requires the server 'email address' and the associated apikey.
+/etc/fail2ban/action.d/blocklist_de.conf:27:#     password incorrectly.
+/etc/fail2ban/action.d/blocklist_de.conf:57:actionban = curl --fail --data-urlencode "server=<email>" --data "apikey=<apikey>" --data "service=<service>" --data "ip=<ip>" --data-urlencode "logs=<matches><br>" --data 'format=text' --user-agent "<agent>" "https://www.blocklist.de/en/httpreports.html"
+/etc/fail2ban/action.d/blocklist_de.conf:73:# Option:  apikey
+/etc/fail2ban/action.d/blocklist_de.conf:74:# Notes    your user blocklist.de user account apikey
+/etc/fail2ban/action.d/blocklist_de.conf:77:#apikey =
+/etc/fail2ban/action.d/abuseipdb.conf:16:#     password incorrectly.
+/etc/fail2ban/action.d/abuseipdb.conf:19:# This action relies on a api_key being added to the above action conf,
+/etc/fail2ban/action.d/abuseipdb.conf:24:#            abuseipdb[abuseipdb_apikey="my-api-key", abuseipdb_category="18,22"]
+/etc/fail2ban/action.d/abuseipdb.conf:88:actionban = lgm=$(printf '%%.1000s\n...' "<matches>"); curl -sSf "https://api.abuseipdb.com/api/v2/report" -H "Accept: application/json" -H "Key: <abuseipdb_apikey>" --data-urlencode "comment=$lgm" --data-urlencode "ip=<ip>" --data "categories=<abuseipdb_category>"
+/etc/fail2ban/action.d/abuseipdb.conf:99:# Option:  abuseipdb_apikey
+/etc/fail2ban/action.d/abuseipdb.conf:104:abuseipdb_apikey =
+/etc/fail2ban/action.d/firewallcmd-common.conf:43:#          kpasswd ldap ldaps libvirt libvirt-tls mdns mosh mountd ms-wbt mysql nfs ntp openvpn pmcd pmproxy pmwebapi pmwebapis pop3s 
+/etc/fail2ban/action.d/cloudflare.conf:44:#actionban = curl -s -o /dev/null https://www.cloudflare.com/api_json.html -d 'a=ban' -d 'tkn=<cftoken>' -d 'email=<cfuser>' -d 'key=<ip>'
+/etc/fail2ban/action.d/cloudflare.conf:59:#actionunban = curl -s -o /dev/null https://www.cloudflare.com/api_json.html -d 'a=nul' -d 'tkn=<cftoken>' -d 'email=<cfuser>' -d 'key=<ip>'
+/etc/fail2ban/action.d/cloudflare.conf:68:_cf_api_prms = -H 'X-Auth-Email: <cfuser>' -H 'X-Auth-Key: <cftoken>' -H 'Content-Type: application/json'
+/etc/fail2ban/action.d/cloudflare.conf:79:# cfapikey = 
+/etc/fail2ban/action.d/cloudflare.conf:81:cftoken =
+/etc/fail2ban/action.d/smtp.py:78:		self, jail, name, host="localhost", user=None, password=None,
+/etc/fail2ban/action.d/smtp.py:93:		password : str, optional
+/etc/fail2ban/action.d/smtp.py:94:			Password used for authentication with SMTP server.
+/etc/fail2ban/action.d/smtp.py:115:		self.password =password
+/etc/fail2ban/action.d/smtp.py:162:			if self.user and self.password: # pragma: no cover (ATM no tests covering that)
+/etc/fail2ban/action.d/smtp.py:163:				smtp.login(self.user, self.password)
+/etc/fail2ban/action.d/xarf-login-attack.conf:10:#     password incorrectly.
+/etc/fail2ban/action.d/mynetwatchman.conf:9:# <mnwpass> (your mNW password).
+/etc/fail2ban/action.d/mynetwatchman.conf:21:# mnwpass = SECRET
+/etc/fail2ban/action.d/mynetwatchman.conf:66:            <getcmd> "<mnwurl>?AT=2&AV=0&AgentEmail=$MNWLOGIN&AgentPassword=$MNWPASS&AttackerIP=<ip>&SrcPort=<srcport>&ProtocolID=$PROTOCOL&DestPort=<port>&AttackCount=<failures>&VictimIP=<myip>&AttackDateTime=$DATETIME" 2>&1 >> <tmpfile>.out && grep -q 'Attack Report Insert Successful' <tmpfile>.out && rm -f <tmpfile>.out
+/etc/fail2ban/action.d/mynetwatchman.conf:93:# Notes.:  The password corresponding to your mNW login e-mail address. MUST be
+/etc/fail2ban/action.d/netscaler.conf:16:# ns_auth: username:password, suggest base64 encoded for a little added security (echo -n "username:password" | base64)
+/etc/fail2ban/action.d/nginx-block-map.conf:8:# Example (argument "token_id" resp. cookie "session_id" used here as unique identifier for user):
+/etc/fail2ban/action.d/nginx-block-map.conf:13:#     #map $arg_token_id      $blck_lst_tok { include blacklisted-tokens.map; }
+/etc/fail2ban/action.d/logicorp-flag.conf:2:actionban = echo FLAG{SSH_BRUTE_BLOCKED} > /opt/logicorp/advanced_flags/ban.flag
+/etc/fail2ban/filter.d/oracleims.conf:20:# Notes.:  regex to match the password failures messages
+/etc/fail2ban/filter.d/oracleims.conf:45:# mi="Bad password"
+/etc/fail2ban/filter.d/oracleims.conf:47:# di="535 5.7.8 Bad username or password (Authentication failed)."/>
+/etc/fail2ban/filter.d/oracleims.conf:55:failregex = tr="[A-Z]+\|[0-9.]+\|\d+\|<HOST>\|\d+" ap="[^"]*" mi="Bad password" us="[^"]*" di="535 5.7.8 Bad username or password( \(Authentication failed\))?\."/>$
+/etc/fail2ban/filter.d/screensharingd.conf:19:# Notes.:  regex to match the password failures messages in the logfile. The
+/etc/fail2ban/filter.d/asterisk.conf:23:failregex = ^Registration from '[^']*' failed for '<HOST>(:\d+)?' - (?:Wrong password|Username/auth name mismatch|No matching peer found|Not a local domain|Device does not match ACL|Peer is not supposed to register|ACL error \(permit/deny\)|Not a local domain)$
+/etc/fail2ban/filter.d/asterisk.conf:28:            ^SecurityEvent="(?:FailedACL|InvalidAccountID|ChallengeResponseFailed|InvalidPassword)"(?:(?:,(?!RemoteAddress=)\w+="[^"]*")*|.*?),RemoteAddress="IPV[46]/[^/"]+/<HOST>/\d+"(?:,(?!RemoteAddress=)\w+="[^"]*")*$
+/etc/fail2ban/filter.d/monit.conf:21:failregex = ^%(__prefix_line)s(?:error\s*:\s+)?(?:%(_prefix)s):\s+(?:access denied\s+--\s+)?[Cc]lient '?<HOST>'?(?:\s+supplied|\s*:)\s+(?:unknown user '<F-ALT_USER>[^']+</F-ALT_USER>'|wrong password for user '<F-USER>[^']*</F-USER>'|empty password)
+/etc/fail2ban/filter.d/dovecot.conf:17:            ^pam\(\S+,<HOST>(?:,\S*)?\): pam_authenticate\(\) failed: (?:User not known to the underlying authentication module: \d+ Time\(s\)|Authentication failure \(password mismatch\?\)|Permission denied)\s*$
+/etc/fail2ban/filter.d/dovecot.conf:18:            ^[a-z\-]{3,15}\(\S*,<HOST>(?:,\S*)?\): (?:unknown user|invalid credentials|Password mismatch)
+/etc/fail2ban/filter.d/zoneminder.conf:12:# Notes.:  regex to match the password failure messages in the logfile.
+/etc/fail2ban/filter.d/lighttpd-auth.conf:1:# Fail2Ban filter to match wrong passwords as notified by lighttpd's auth Module
+/etc/fail2ban/filter.d/lighttpd-auth.conf:6:failregex = ^: \((?:http|mod)_auth\.c\.\d+\) (?:password doesn\'t match .* username: .*|digest: auth failed for .*: wrong password|get_password failed), IP: <HOST>\s*$
+/etc/fail2ban/filter.d/dropbear.conf:29:            ^[Bb]ad (PAM )?password attempt for .+ from <HOST>(:\d+)?$
+/etc/fail2ban/filter.d/dropbear.conf:47:# http://svn.dd-wrt.com/changeset/16642/src/router/dropbear/svr-authpasswd.c
+/etc/fail2ban/filter.d/sshd.conf:3:# If you want to protect OpenSSH from being bruteforced by password
+/etc/fail2ban/filter.d/sshd.conf:5:# PasswordAuthentication in sshd_config.
+/etc/fail2ban/filter.d/openwebmail.conf:8:failregex = ^ - \[\d+\] \(<HOST>\) (?P<USER>\S+) - login error - (no such user - loginname=(?P=USER)|auth_unix.pl, ret -4, Password incorrect)$
+/etc/fail2ban/filter.d/murmur.conf:23:failregex = ^Invalid server password$
+/etc/fail2ban/filter.d/murmur.conf:24:            ^Wrong certificate or password for existing user$
+/etc/fail2ban/filter.d/froxlor-auth.conf:5:# <syslog prefix> Froxlor: [Login Action <HOST>] User '<USER>' tried to login with wrong password.
+/etc/fail2ban/filter.d/froxlor-auth.conf:22:# Notes.:  regex to match the password failures messages in the logfile. The
+/etc/fail2ban/filter.d/froxlor-auth.conf:32:            ^User \S* tried to login with wrong password.$
+/etc/fail2ban/filter.d/squirrelmail.conf:4:failregex = ^ \[LOGIN_ERROR\].*from <HOST>: Unknown user or password incorrect\.$
+/etc/fail2ban/filter.d/nginx-http-auth.conf:7:failregex = ^ \[error\] \d+#\d+: \*\d+ user "(?:[^"]+|.*?)":? (?:password mismatch|was not found in "[^\"]*"), client: <HOST>, server: \S*, request: "\S+ \S+ HTTP/\d+\.\d+", host: "\S+"(?:, referrer: "\S+")?\s*$
+/etc/fail2ban/filter.d/domino-smtp.conf:26:# Notes.:  regex to match the password failure messages in the logfile. The
+/etc/fail2ban/filter.d/domino-smtp.conf:34:# [28325:00010-3735542592] 22-06-2014 09:56:12   smtp: postmaster [1.2.3.4] authentication failure using internet password
+/etc/fail2ban/filter.d/domino-smtp.conf:35:# 08-09-2014 06:14:27   smtp: postmaster [1.2.3.4] authentication failure using internet password
+/etc/fail2ban/filter.d/domino-smtp.conf:41:            ^%(__prefix)ssmtp: (?:[^\[]+ )*\[?<HOST>\]? authentication failure using internet password\s*$
+/etc/fail2ban/filter.d/haproxy-http-auth.conf:25:# Notes.:  regex to match the password failures messages in the logfile. The
+/etc/fail2ban/filter.d/mysqld-auth.conf:20:failregex = ^%(__prefix_line)s(?:(?:\d{6}|\d{4}-\d{2}-\d{2})[ T]\s?\d{1,2}:\d{2}:\d{2} )?(?:\d+ )?\[\w+\] (?:\[[^\]]+\] )*Access denied for user '<F-USER>[^']+</F-USER>'@'<HOST>' (to database '[^']*'|\(using password: (YES|NO)\))*\s*$
+/etc/fail2ban/filter.d/mysqld-auth.conf:29:# 130322 11:26:54 [Warning] Access denied for user 'root'@'127.0.0.1' (using password: YES)
+/etc/fail2ban/filter.d/ejabberd-auth.conf:10:# Notes.:  regex to match the password failures messages in the logfile. The
+/etc/fail2ban/filter.d/solid-pop3d.conf:17:            ^%(__prefix_line)scan't find APOP secret for user .*? - <HOST>$
+/etc/fail2ban/filter.d/proftpd.conf:17:__suffix_failed_login = ([uU]ser not authorized for login|[nN]o such user found|[iI]ncorrect password|[pP]assword expired|[aA]ccount disabled|[iI]nvalid shell: '\S+'|[uU]ser in \S+|[lL]imit (access|configuration) denies login|[nN]ot a UserAlias|[mM]aximum login length exceeded)
+/etc/fail2ban/filter.d/slapd.conf:3:# Detecting invalid credentials: error code 49
+/etc/fail2ban/filter.d/slapd.conf:4:# http://www.openldap.org/doc/admin24/appendix-ldap-result-codes.html#invalidCredentials (49)
+/etc/fail2ban/filter.d/grafana.conf:9:failregex = ^(?: lvl=err?or)? msg="Invalid username or password"(?: uname=(?:"<F-ALT_USER>[^"]+</F-ALT_USER>"|<F-USER>\S+</F-USER>)| error="<F-ERROR>[^"]+</F-ERROR>"| \S+=(?:\S*|"[^"]+"))* remote_addr=<ADDR>$
+/etc/fail2ban/filter.d/sogo-auth.conf:7:failregex = ^ sogod \[\d+\]: SOGoRootPage Login from '<HOST>(?:,[^']*)?' for user '[^']*' might not have worked( - password policy: \d*  grace: -?\d*  expire: -?\d*  bound: -?\d*)?\s*$
+/etc/fail2ban/filter.d/apache-auth.conf:30:            ^%(auth_type)suser <F-USER>(?:\S*|.*?)</F-USER>: password mismatch\b
+/etc/fail2ban/filter.d/nsd.conf:19:# Notes.:  regex to match the password failures messages in the logfile. The
+/etc/fail2ban/jail.conf:232:action_cf_mwl = cloudflare[cfuser="%(cfemail)s", cftoken="%(cfapikey)s"]
+/etc/fail2ban/jail.conf:239:# `action_blocklist_de` used for the action, set value of `blocklist_de_apikey`
+/etc/fail2ban/jail.conf:243:action_blocklist_de  = blocklist_de[email="%(sender)s", service="%(__name__)s", apikey="%(blocklist_de_apikey)s", agent="%(fail2ban_agent)s"]
+/etc/fail2ban/jail.conf:906:# knocking_url variable must be overridden to some secret value in jail.local

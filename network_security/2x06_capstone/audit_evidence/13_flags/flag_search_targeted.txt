@@ -1,0 +1,45 @@
+Command: 
+grep -RniE \
+"FLAG\{[^}]+\}" \
+/etc/logicorp \
+/opt/logicorp \
+/srv/ftp \
+/etc/cron.d \
+/etc/fail2ban \
+/var/log \
+/var/backups \
+/root \
+/home \
+2>/dev/null || true
+
+
+/etc/logicorp/db.conf:3:# FLAG{Z3R0_TRU5T_Z0N3S}
+/etc/logicorp/telnet.flag:1:# FLAG{UNN3C3SS4RY_S3RV1C3}
+/etc/logicorp/network.conf:2:# FLAG{AUD1T_FL4T_N3TW0RK}
+/etc/logicorp/security.policy:2:FLAG{R00T_L0G1N_D3T3CT3D}
+/opt/logicorp/backups/backup.sql:2:FLAG{S3NS1T1V3_B4CKUP_EXP0S3D}
+/etc/cron.d/logicorp:2:# FLAG{CR0N_B4CKD00R}
+/etc/fail2ban/action.d/logicorp-flag.conf:2:actionban = echo FLAG{SSH_BRUTE_BLOCKED} > /opt/logicorp/advanced_flags/ban.flag
+/var/log/suricata/fast.log:1:FLAG{1DS_D3T3CT10N_W0RKS}
+/home/student/audit_evidence/11_logs/logs_flag_search.txt:5:/var/log/suricata/fast.log:1:FLAG{1DS_D3T3CT10N_W0RKS}
+/home/student/audit_evidence/12_intrusion_analysis/startup_security_analysis.txt:20:38:echo "FLAG{1DS_D3T3CT10N_W0RKS}" >> /var/log/suricata/fast.log
+/home/student/audit_evidence/12_intrusion_analysis/startup_injected_log_entries.txt:13:38:echo "FLAG{1DS_D3T3CT10N_W0RKS}" >> /var/log/suricata/fast.log
+/home/student/audit_evidence/09_ftp/ftp_configuration.txt:179:# FLAG{CL34RT3XT_FTP}
+/home/student/audit_evidence/01_system/system_startup_scripts.txt:56:echo "FLAG{1DS_D3T3CT10N_W0RKS}" >> /var/log/suricata/fast.log
+/home/student/audit_evidence/08_persistence/cron_system.txt:63:# FLAG{CR0N_B4CKD00R}
+/home/student/audit_evidence/10_sensitive_data/sensitive_content_search.txt:22:/etc/logicorp/db.conf:3:# FLAG{Z3R0_TRU5T_Z0N3S}
+/home/student/audit_evidence/10_sensitive_data/sensitive_content_search.txt:23:/etc/logicorp/telnet.flag:1:# FLAG{UNN3C3SS4RY_S3RV1C3}
+/home/student/audit_evidence/10_sensitive_data/sensitive_content_search.txt:24:/etc/logicorp/network.conf:2:# FLAG{AUD1T_FL4T_N3TW0RK}
+/home/student/audit_evidence/10_sensitive_data/sensitive_content_search.txt:25:/etc/logicorp/security.policy:2:FLAG{R00T_L0G1N_D3T3CT3D}
+/home/student/audit_evidence/10_sensitive_data/sensitive_content_search.txt:27:/opt/logicorp/backups/backup.sql:2:FLAG{S3NS1T1V3_B4CKUP_EXP0S3D}
+/home/student/audit_evidence/10_sensitive_data/sensitive_content_search.txt:28:/etc/vsftpd.conf:157:# FLAG{CL34RT3XT_FTP}
+/home/student/audit_evidence/10_sensitive_data/sensitive_content_search.txt:29:/etc/cron.d/logicorp:2:# FLAG{CR0N_B4CKD00R}
+/home/student/audit_evidence/10_sensitive_data/sensitive_content_search.txt:64:/etc/fail2ban/action.d/logicorp-flag.conf:2:actionban = echo FLAG{SSH_BRUTE_BLOCKED} > /opt/logicorp/advanced_flags/ban.flag
+/home/student/audit_evidence/10_sensitive_data/logicorp_readable_files.txt:29:# FLAG{Z3R0_TRU5T_Z0N3S}
+/home/student/audit_evidence/10_sensitive_data/logicorp_readable_files.txt:33:# FLAG{UNN3C3SS4RY_S3RV1C3}
+/home/student/audit_evidence/10_sensitive_data/logicorp_readable_files.txt:38:# FLAG{AUD1T_FL4T_N3TW0RK}
+/home/student/audit_evidence/10_sensitive_data/logicorp_readable_files.txt:43:FLAG{R00T_L0G1N_D3T3CT3D}
+/home/student/audit_evidence/10_sensitive_data/logicorp_readable_files.txt:48:FLAG{S3NS1T1V3_B4CKUP_EXP0S3D}
+/home/student/audit_evidence/06_ssh/ssh_configuration.txt:137:# FLAG{R00T_SSH_1S_D4NG3R}
+/home/student/audit_evidence/13_flags/ftp_flag_search.txt:17:/etc/vsftpd.conf:157:# FLAG{CL34RT3XT_FTP}
+/home/student/audit_evidence/04_security_controls/security_fail2ban.txt:4957:actionban = echo FLAG{SSH_BRUTE_BLOCKED} > /opt/logicorp/advanced_flags/ban.flag

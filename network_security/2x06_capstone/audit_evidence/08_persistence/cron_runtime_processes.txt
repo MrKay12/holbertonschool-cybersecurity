@@ -1,0 +1,13 @@
+Command: 
+ps auxww |
+grep -Ei \
+"[c]ron|[c]url|[w]get|192\.168\.1\.200" || true
+
+
+root          78  0.0  0.1   3888  2076 ?        Ss   13:14   0:00 /usr/sbin/cron -P
+root        3545  0.0  0.2   7324  4100 ?        S    14:08   0:00 /usr/sbin/CRON -P
+root        3546  0.0  0.0   2892   980 ?        Ss   14:08   0:00 /bin/sh -c /usr/bin/curl http://192.168.1.200/ping
+root        3547  0.0  0.4  19428  8480 ?        S    14:08   0:00 /usr/bin/curl http://192.168.1.200/ping
+root        3562  0.0  0.2   7324  4100 ?        S    14:09   0:00 /usr/sbin/CRON -P
+root        3563  0.0  0.0   2892   952 ?        Ss   14:09   0:00 /bin/sh -c /usr/bin/curl http://192.168.1.200/ping
+root        3564  0.0  0.4  19428  8480 ?        S    14:09   0:00 /usr/bin/curl http://192.168.1.200/ping

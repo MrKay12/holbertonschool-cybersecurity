@@ -1,0 +1,19 @@
+Command: 
+grep -RniE "(chpasswd|usermod[[:space:]].*(-p|--password)|useradd[[:space:]].*(-p|--password)|/dev/tcp|bash[[:space:]]+-i|nc[[:space:]].*(-e|--exec)|socat.*EXEC|curl.+\|[[:space:]]*(sh|bash)|wget.+\|[[:space:]]*(sh|bash))" /opt /usr/local /srv /root /home /tmp /var/tmp /etc/cron.d /etc/profile.d 2>/dev/null || true
+
+
+/usr/local/lib/python3.10/dist-packages/urllib3/response.py:492:        tr_enc = self.headers.get("transfer-encoding", "").lower()
+/home/student/audit.sh:184:    grep -nE     "fake attack log|brute force source|chpasswd|passwd[[:space:]]|nft[[:space:]]+flush[[:space:]]+ruleset|ttyd|openvscode-server|code-server|setup_ssh|auth\.log|suricata/fast\.log"     "$file" 2>/dev/null || true
+/home/student/audit.sh:205:    grep -nE     "chpasswd|passwd[[:space:]]|usermod[[:space:]].*(-p|--password)|useradd[[:space:]].*(-p|--password)"     "$file" 2>/dev/null || true
+/home/student/audit.sh:912:grep -RniE "(chpasswd|usermod[[:space:]].*(-p|--password)|useradd[[:space:]].*(-p|--password)|/dev/tcp|bash[[:space:]]+-i|nc[[:space:]].*(-e|--exec)|socat.*EXEC|curl.+\|[[:space:]]*(sh|bash)|wget.+\|[[:space:]]*(sh|bash))" /opt /usr/local /srv /root /home /tmp /var/tmp /etc/cron.d /etc/profile.d 2>/dev/null || true
+/home/student/audit.sh:1055:if grep -qiE "chpasswd|passwd|usermod|useradd" "$(evidence_path "startup_password_changes.txt")" 2>/dev/null; then
+/home/student/audit.sh:1150:The presence of commands such as \`chpasswd\`, \`nft flush ruleset\`, \`ttyd\`
+/home/student/audit_evidence/07_services/services_processes.txt:4:root           1  0.0  0.0   2892   948 ?        Ss   13:14   0:00 /bin/sh -c echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd && service ssh restart > /dev/null && /etc/run.sh
+/home/student/audit_evidence/03_attack_surface/process_command_lines.txt:14:1: /bin/sh -c echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd && service ssh restart > /dev/null && /etc/run.sh 
+/home/student/audit_evidence/12_intrusion_analysis/startup_security_analysis.txt:7:    grep -nE     "fake attack log|brute force source|chpasswd|passwd[[:space:]]|nft[[:space:]]+flush[[:space:]]+ruleset|ttyd|openvscode-server|code-server|setup_ssh|auth\.log|suricata/fast\.log"     "$file" 2>/dev/null || true
+/home/student/audit_evidence/12_intrusion_analysis/startup_security_analysis.txt:14:17:echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd
+/home/student/audit_evidence/12_intrusion_analysis/startup_password_changes.txt:6:    grep -nE     "chpasswd|passwd[[:space:]]|usermod[[:space:]].*(-p|--password)|useradd[[:space:]].*(-p|--password)"     "$file" 2>/dev/null || true
+/home/student/audit_evidence/12_intrusion_analysis/startup_password_changes.txt:12:17:echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd
+/home/student/audit_evidence/01_system/system_processes.txt:4:root           1  0.0  0.0   2892   948 ?        Ss   13:14   0:00 /bin/sh -c echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd && service ssh restart > /dev/null && /etc/run.sh
+/home/student/audit_evidence/01_system/system_startup_scripts.txt:35:echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd
+/home/student/audit_evidence/01_system/system_pid1.txt:4:      1       0 root     root     sh              /bin/sh -c echo root:`echo $HOSTNAME | cut -d '-' -f 1` | chpasswd && service ssh restart > /dev/null && /etc/run.sh
