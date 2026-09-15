@@ -1,0 +1,39 @@
+/usr/sbin/nginx {
+    # Nginx binary
+    /usr/sbin/nginx r,
+
+    # Nginx configuration
+    /etc/nginx/** r,
+
+    # Static web content
+    /usr/share/nginx/html/** r,
+
+    # Nginx logs
+    /var/log/nginx/** w,
+
+    # SecureHealth plugin configuration
+    /opt/securehealth/plugin.conf r,
+
+    # SecureHealth plugin data
+    /opt/securehealth/data/** r,
+
+    # TCP network access
+    network inet stream,
+
+    # UDP network access
+    network inet dgram,
+
+    # PID file required by nginx master process
+    /run/nginx.pid rw,
+    /var/run/nginx.pid rw,
+
+    # SSL/TLS certificates and private keys used by HTTPS virtual hosts
+    /etc/ssl/certs/** r,
+    /etc/ssl/private/** r,
+
+    # Shared libraries required to start and run nginx
+    /lib/** r,
+    /lib64/** r,
+    /usr/lib/** r,
+    /usr/lib64/** r,
+}
