@@ -622,7 +622,760 @@ passwordauthentication no
 Les principales faiblesses découvertes au début de l'audit ont été traitées par une combinaison de contrôles :
 
 * **Governance** : politiques de sécurité et procédure de réponse aux incidents ;
-* **Prevention** : SSH hardening, firewall, RBAC, moindre privilège et restrictions PostgreSQL ;
+* **Prevention** : SSH hardening, fa# Nexus Financial - Final Security Audit Report
+
+## 1. Objectif
+
+Ce rapport simule l'audit final de l'infrastructure Nexus Financial après la mise en place des contrôles de sécurité.
+
+Chaque contrôle contient :
+
+1. **Verification Command**
+2. **Expected Output**
+3. **Self-Assessment**
+
+---
+
+# 2. SSH Hardening
+
+## Verification Command
+
+```bash
+sshd -T | grep -E "permitrootlogin|passwordauthentication|pubkeyauthentication|maxauthtries"
+```
+
+## Expected Output
+
+```text
+permitrootlogin no
+passwordauthentication no
+pubkeyauthentication yes
+maxauthtries 3
+```
+
+## Self-Assessment
+
+**PASS**
+
+L'accès SSH direct à `root` est désactivé. L'authentification par mot de passe est désactivée et les utilisateurs doivent utiliser des clés SSH individuelles.
+
+---
+
+# 3. Firewall - Default Deny
+
+## Verification Command
+
+```bash
+ufw status verbose
+```
+
+## Expected Output
+
+```text
+Status: active
+Default: deny (incoming), allow (outgoing)
+```
+
+Des règles spécifiques doivent également apparaître pour les services autorisés.
+
+## Self-Assessment
+
+**PASS**
+
+UFW est actif avec une politique par défaut interdisant les connexions entrantes non autorisées.
+
+---
+
+# 4. PostgreSQL Network Protection
+
+## Verification Command
+
+```bash
+ufw status numbered | grep 5432
+```
+
+## Expected Output
+
+```text
+5432/tcp DENY IN Anywhere
+5432/tcp ALLOW IN 10.0.1.10
+```
+
+## Self-Assessment
+
+**PASS**
+
+Le port PostgreSQL `5432` n'est plus accessible publiquement. L'accès est limité au serveur Web `10.0.1.10`.
+
+---
+
+# 5. SSH Bastion Restriction
+
+## Verification Command
+
+```bash
+ufw status numbered | grep 22
+```
+
+## Expected Output
+
+```text
+22/tcp ALLOW IN 10.0.1.20
+```
+
+## Self-Assessment
+
+**PASS**
+
+L'accès SSH est limité au Bastion Host `10.0.1.20`.
+
+---
+
+# 6. RBAC Groups
+
+## Verification Command
+
+```bash
+getent group devs
+getent group ops
+getent group auditors
+```
+
+## Expected Output
+
+```text
+devs:x:...
+ops:x:...
+auditors:x:...
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les groupes RBAC `devs`, `ops` et `auditors` sont présents.
+
+---
+
+# 7. User Group Membership
+
+## Verification Command
+
+```bash
+id sarah
+id dave
+id auditor
+```
+
+## Expected Output
+
+```text
+sarah: devs ops
+dave: devs auditors
+auditor: auditors
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les utilisateurs sont associés aux groupes correspondant à leurs responsabilités.
+
+---
+
+# 8. Restricted Sudo Access
+
+## Verification Command
+
+```bash
+sudo -l -U sarah
+```
+
+## Expected Output
+
+```text
+User sarah may run the following commands:
+    (root) /bin/systemctl restart nginx
+    (root) /bin/systemctl start nginx
+    (root) /bin/systemctl stop nginx
+    (root) /bin/systemctl status nginx
+```
+
+Sarah ne doit pas disposer d'une règle générale comme :
+
+```text
+(ALL : ALL) ALL
+```
+
+## Self-Assessment
+
+**PASS**
+
+Sarah appartient au groupe `ops` et dispose uniquement des commandes nécessaires à la gestion du service Nginx.
+
+Le principe du moindre privilège est appliqué.
+
+---
+
+# 9. Sudo Access for Auditor
+
+## Verification Command
+
+```bash
+sudo -l -U auditor
+```
+
+## Expected Output
+
+```text
+User auditor is not allowed to run sudo
+```
+
+ou aucune commande administrative autorisée.
+
+## Self-Assessment
+
+**PASS**
+
+Le compte `auditor` peut consulter les informations d'audit prévues mais ne dispose pas de privilèges administratifs généraux.
+
+---
+
+# 10. Sudoers Configuration
+
+## Verification Command
+
+```bash
+cat /etc/sudoers.d/nexus-rbac
+```
+
+## Expected Output
+
+```text
+%ops ALL=(root) /bin/systemctl restart nginx
+%ops ALL=(root) /bin/systemctl start nginx
+%ops ALL=(root) /bin/systemctl stop nginx
+%ops ALL=(root) /bin/systemctl status nginx
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les privilèges administratifs du groupe `ops` sont explicitement limités.
+
+---
+
+# 11. Sudoers Validation
+
+## Verification Command
+
+```bash
+visudo -cf /etc/sudoers.d/nexus-rbac
+```
+
+## Expected Output
+
+```text
+/etc/sudoers.d/nexus-rbac: parsed OK
+```
+
+## Self-Assessment
+
+**PASS**
+
+La configuration sudo est syntaxiquement valide.
+
+---
+
+# 12. Sensitive File Auditing
+
+## Verification Command
+
+```bash
+auditctl -l
+```
+
+## Expected Output
+
+```text
+-w /etc/passwd -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+-w /etc/sudoers -p wa -k sudo_changes
+-w /etc/ssh/sshd_config -p wa -k ssh_changes
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les fichiers sensibles sont surveillés par `auditd`.
+
+---
+
+# 13. Privileged Command Monitoring
+
+## Verification Command
+
+```bash
+auditctl -l | grep privileged_commands
+```
+
+## Expected Output
+
+```text
+-a always,exit -F arch=b64 -S execve -F euid=0 -F key=privileged_commands
+-a always,exit -F arch=b32 -S execve -F euid=0 -F key=privileged_commands
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les commandes exécutées avec les privilèges root sont enregistrées par `auditd`.
+
+---
+
+# 14. Audit Configuration Immutability
+
+## Verification Command
+
+```bash
+auditctl -s
+```
+
+## Expected Output
+
+```text
+enabled 2
+```
+
+## Self-Assessment
+
+**PASS**
+
+La valeur `enabled 2` indique que les règles d'audit sont immuables jusqu'au prochain redémarrage.
+
+---
+
+# 15. Centralized Logging
+
+## Verification Command
+
+```bash
+grep -R "10.0.1.30" /etc/rsyslog.d/
+```
+
+## Expected Output
+
+```text
+*.warning @@10.0.1.30:514
+auth,authpriv.* @@10.0.1.30:514
+kern.* @@10.0.1.30:514
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les événements importants sont transmis au serveur central de logs `10.0.1.30`.
+
+Cela permet de conserver des traces même si un serveur local est compromis.
+
+---
+
+# 16. Rsyslog Service
+
+## Verification Command
+
+```bash
+systemctl is-active rsyslog
+```
+
+## Expected Output
+
+```text
+active
+```
+
+## Self-Assessment
+
+**PASS**
+
+Le service `rsyslog` est actif.
+
+---
+
+# 17. Auditd Service
+
+## Verification Command
+
+```bash
+systemctl is-active auditd
+```
+
+## Expected Output
+
+```text
+active
+```
+
+## Self-Assessment
+
+**PASS**
+
+Le service `auditd` est actif.
+
+---
+
+# 18. Fail2ban Protection
+
+## Verification Command
+
+```bash
+systemctl is-active fail2ban
+fail2ban-client status sshd
+```
+
+## Expected Output
+
+```text
+active
+Status for the jail: sshd
+```
+
+## Self-Assessment
+
+**PASS**
+
+Fail2ban protège SSH contre les tentatives répétées d'authentification.
+
+---
+
+# 19. Kernel Network Hardening
+
+## Verification Command
+
+```bash
+sysctl net.ipv4.ip_forward
+sysctl net.ipv4.conf.all.accept_redirects
+sysctl net.ipv4.conf.all.accept_source_route
+sysctl net.ipv4.tcp_syncookies
+```
+
+## Expected Output
+
+```text
+net.ipv4.ip_forward = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.tcp_syncookies = 1
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les paramètres réseau du noyau sont renforcés.
+
+---
+
+# 20. Shared SSH Key Revocation
+
+## Verification Command
+
+```bash
+find /home /root -name "nexus_master.pem" -type f 2>/dev/null
+```
+
+## Expected Output
+
+```text
+No output
+```
+
+## Self-Assessment
+
+**PASS**
+
+La clé SSH partagée `nexus_master.pem` ne doit plus être présente ni utilisable.
+
+Les administrateurs doivent utiliser des clés SSH individuelles.
+
+---
+
+# 21. Nginx Configuration Permissions
+
+## Verification Command
+
+```bash
+ls -ld /etc/nginx
+ls -l /etc/nginx/nginx.conf
+```
+
+## Expected Output
+
+```text
+drwxr-xr-x root root /etc/nginx
+-rw-r--r-- root root /etc/nginx/nginx.conf
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les fichiers de configuration Nginx sont protégés contre les modifications non autorisées.
+
+---
+
+# 22. Log Permissions
+
+## Verification Command
+
+```bash
+ls -ld /var/log/nginx
+ls -l /var/log/nginx
+```
+
+## Expected Output
+
+```text
+drwxr-x--- root auditors /var/log/nginx
+-rw-r----- root auditors access.log
+-rw-r----- root auditors error.log
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les logs sont accessibles au groupe `auditors` avec des permissions restrictives.
+
+---
+
+# 23. Incident Response Plan
+
+## Verification Command
+
+```bash
+grep -Ei "Identification|Containment|Eradication|Recovery|Lessons Learned|Escalade" policy/incident_response_plan.md
+```
+
+## Expected Output
+
+```text
+Identification
+Containment
+Eradication
+Recovery
+Lessons Learned
+Escalade
+```
+
+## Self-Assessment
+
+**PASS**
+
+Un playbook documenté existe pour gérer une compromission de la base de données.
+
+---
+
+# 24. Physical Security Plan
+
+## Verification Command
+
+```bash
+test -s policy/physical_security_plan.md && echo "Physical security plan present"
+```
+
+## Expected Output
+
+```text
+Physical security plan present
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les risques physiques identifiés disposent de mesures correctives documentées.
+
+---
+
+# 25. Threat Model
+
+## Verification Command
+
+```bash
+grep -Ei "Spoofing|Tampering|Repudiation|Information Disclosure|Denial of Service|Elevation of Privilege" policy/threat_model.md
+```
+
+## Expected Output
+
+```text
+Spoofing
+Tampering
+Repudiation
+Information Disclosure
+Denial of Service
+Elevation of Privilege
+```
+
+## Self-Assessment
+
+**PASS**
+
+Le Threat Model couvre les catégories principales du modèle STRIDE.
+
+---
+
+# 26. Access Control Policy
+
+## Verification Command
+
+```bash
+test -s policy/access_control_policy.md && echo "Access control policy present"
+```
+
+## Expected Output
+
+```text
+Access control policy present
+```
+
+## Self-Assessment
+
+**PASS**
+
+Une politique de contrôle d'accès est présente et documente le RBAC, SSH et le principe du moindre privilège.
+
+---
+
+# 27. Global Verification
+
+## Verification Command
+
+```bash
+ufw status
+auditctl -l
+sudo -l -U sarah
+systemctl is-active rsyslog
+systemctl is-active auditd
+systemctl is-active fail2ban
+sshd -T | grep -E "permitrootlogin|passwordauthentication"
+```
+
+## Expected Output
+
+```text
+Status: active
+Default: deny (incoming)
+
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/sudoers -p wa -k sudo_changes
+
+User sarah may run the following commands:
+    (root) /bin/systemctl restart nginx
+    (root) /bin/systemctl start nginx
+    (root) /bin/systemctl stop nginx
+    (root) /bin/systemctl status nginx
+
+active
+active
+active
+
+permitrootlogin no
+passwordauthentication no
+```
+
+## Self-Assessment
+
+**PASS**
+
+Les contrôles essentiels sont présents et vérifiables :
+
+* UFW applique une politique Default Deny ;
+* PostgreSQL est restreint au serveur Web ;
+* SSH est restreint au Bastion Host ;
+* `auditd` surveille les fichiers sensibles ;
+* les commandes privilégiées sont auditées ;
+* les règles audit sont immuables jusqu'au redémarrage ;
+* `sudo -l` confirme que les privilèges sont limités ;
+* les logs sont centralisés ;
+* SSH est renforcé.
+
+---
+
+# 28. Final Self-Assessment
+
+## Verification Command
+
+```bash
+ufw status verbose
+auditctl -l
+sudo -l -U sarah
+auditctl -s
+systemctl is-active rsyslog
+systemctl is-active auditd
+systemctl is-active fail2ban
+```
+
+## Expected Output
+
+```text
+UFW: active
+Default incoming policy: deny
+
+auditctl:
+Sensitive file watches active
+Privileged command auditing active
+
+sudo -l:
+Sarah can only manage the nginx service
+
+auditd:
+enabled 2
+
+rsyslog:
+active
+
+auditd:
+active
+
+fail2ban:
+active
+```
+
+## Self-Assessment
+
+**PASS - Controls implemented and verifiable**
+
+Les principales faiblesses découvertes au début de l'audit ont été traitées avec :
+
+* **Governance** : politiques de sécurité et réponse aux incidents ;
+* **Prevention** : SSH hardening, UFW, RBAC et moindre privilège ;
+* **Detection** : `auditd`, `rsyslog` et Fail2ban ;
+* **Response** : playbook de réponse à incident ;
+* **Physical Security** : sécurisation des accès physiques et des postes.
+
+## Risques résiduels
+
+Les actions suivantes restent nécessaires :
+
+* tester régulièrement les sauvegardes S3 ;
+* tester les procédures de restauration ;
+* déployer un VPN fiable pour les équipes distantes ;
+* utiliser une solution centralisée de gestion des secrets ;
+* réaliser des revues régulières des droits utilisateurs ;
+* tester régulièrement le plan de réponse aux incidents ;
+* maintenir les systèmes à jour ;
+* poursuivre la sensibilisation des employés.
+
+Les contrôles de Nexus Financial sont désormais documentés, vérifiables et conçus pour réduire les principaux risques identifiés lors de l'audit.
+irewall, RBAC, moindre privilège et restrictions PostgreSQL ;
 * **Detection** : auditd, rsyslog centralisé et Fail2ban ;
 * **Response** : playbook de réponse à une compromission de base de données ;
 * **Physical Security** : contrôle des visiteurs, salle serveur, badges et verrouillage des postes.
