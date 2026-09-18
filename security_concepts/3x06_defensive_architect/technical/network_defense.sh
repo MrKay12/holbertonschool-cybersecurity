@@ -1,47 +1,50 @@
-```bash id="f9t0gc"
 #!/bin/bash
 
 # Nexus Financial - Network Defense
 # Ubuntu 20.04+
+# Default Deny network security policy
 
 set -e
-
-WEB_SERVER_IP="10.0.1.10"
-BASTION_IP="10.0.1.20"
-DB_PORT="5432"
-SSH_PORT="22"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Error: this script must be run as root."
     exit 1
 fi
 
-echo "[+] Configuring UFW network defense..."
+echo "[+] Starting Nexus Financial network defense..."
 
 # ---------------------------------------------------------
-# 1. Install UFW if needed
+# 1. Install UFW if necessary
 # ---------------------------------------------------------
+
+echo "[+] Checking UFW..."
 
 if ! command -v ufw >/dev/null 2>&1; then
+    echo "[+] Installing UFW..."
+
     apt-get update -y
     apt-get install -y ufw
 fi
 
 # ---------------------------------------------------------
-# 2. Reset firewall rules
+# 2. Reset existing firewall configuration
 # ---------------------------------------------------------
+
+echo "[+] Resetting existing UFW rules..."
 
 ufw --force reset
 
 # ---------------------------------------------------------
-# 3. Default deny policy
+# 3. Default Deny policy
 # ---------------------------------------------------------
+
+echo "[+] Applying Default Deny policy..."
 
 ufw default deny incoming
 ufw default allow outgoing
 
 # ---------------------------------------------------------
-# 4. Block public PostgreSQL access
+# 4. Block PostgreSQL from the public Internet
 # ---------------------------------------------------------
 
 echo "[+] Blocking public PostgreSQL access..."
@@ -49,48 +52,63 @@ echo "[+] Blocking public PostgreSQL access..."
 ufw deny 5432/tcp
 
 # ---------------------------------------------------------
-# 5. Allow PostgreSQL only from web server
+# 5. Allow PostgreSQL only from Web Server
 # ---------------------------------------------------------
 
-echo "[+] Allowing PostgreSQL from web server only..."
+echo "[+] Allowing PostgreSQL from Web Server..."
 
-ufw allow from "$WEB_SERVER_IP" to any port 5432 proto tcp
-
-# ---------------------------------------------------------
-# 6. Allow SSH only from bastion host
-# ---------------------------------------------------------
-
-echo "[+] Allowing SSH from bastion host only..."
-
-ufw allow from "$BASTION_IP" to any port 22 proto tcp
+# Web Server private IP: 10.0.1.10
+ufw allow from 10.0.1.10 to any port 5432 proto tcp
 
 # ---------------------------------------------------------
-# 7. Allow web traffic
+# 6. Allow SSH only from Bastion Host
 # ---------------------------------------------------------
+
+echo "[+] Restricting SSH to Bastion Host..."
+
+# Bastion Host private IP: 10.0.1.20
+ufw allow from 10.0.1.20 to any port 22 proto tcp
+
+# ---------------------------------------------------------
+# 7. Allow public HTTP traffic
+# ---------------------------------------------------------
+
+echo "[+] Allowing HTTP..."
 
 ufw allow 80/tcp
+
+# ---------------------------------------------------------
+# 8. Allow public HTTPS traffic
+# ---------------------------------------------------------
+
+echo "[+] Allowing HTTPS..."
+
 ufw allow 443/tcp
 
 # ---------------------------------------------------------
-# 8. Enable firewall
+# 9. Enable UFW
 # ---------------------------------------------------------
+
+echo "[+] Enabling UFW..."
 
 ufw --force enable
 
 # ---------------------------------------------------------
-# 9. Display status
+# 10. Display firewall configuration
 # ---------------------------------------------------------
 
 echo
 echo "[+] Network defense configuration completed."
 echo
 echo "------------------------------------------"
-echo "Default incoming policy: DENY"
-echo "PostgreSQL public access: BLOCKED"
-echo "PostgreSQL allowed from: $WEB_SERVER_IP"
-echo "SSH allowed from bastion: $BASTION_IP"
-echo "HTTP/HTTPS: ALLOWED"
+echo "Default incoming traffic : DENY"
+echo "Default outgoing traffic : ALLOW"
+echo "PostgreSQL 5432 public   : DENY"
+echo "PostgreSQL 5432 allowed  : 10.0.1.10"
+echo "SSH 22 allowed           : 10.0.1.20"
+echo "HTTP 80                  : ALLOW"
+echo "HTTPS 443                : ALLOW"
 echo "------------------------------------------"
+echo
 
 ufw status verbose
-```
