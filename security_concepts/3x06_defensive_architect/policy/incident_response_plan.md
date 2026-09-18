@@ -17,7 +17,81 @@ Les priorités sont :
 
 ---
 
-# 2. Identification
+# 2. Contacts et Escalade
+
+## Équipe de réponse aux incidents
+
+| Rôle                | Responsable                  | Responsabilité                                      |
+| ------------------- | ---------------------------- | --------------------------------------------------- |
+| Incident Commander  | Sarah - Lead Developer       | Coordination technique de l'incident                |
+| Direction technique | Dave - CTO                   | Décisions techniques et métier                      |
+| Direction           | CEO                          | Décisions critiques et communication exécutive      |
+| Sécurité            | Interim CISO / Security Team | Investigation, confinement et coordination sécurité |
+| Juridique           | Legal Team                   | Obligations légales et réglementaires               |
+| Communication       | PR / Communication Team      | Communication externe                               |
+
+Les coordonnées téléphoniques et adresses email professionnelles doivent être conservées dans l'annuaire d'urgence interne de Nexus Financial et accessibles même si les systèmes principaux sont indisponibles.
+
+## Niveaux d'escalade
+
+### P1 - Faible
+
+Exemple :
+
+* tentative d'accès bloquée ;
+* aucune donnée compromise ;
+* aucun service critique affecté.
+
+Informer l'équipe Security et documenter l'événement.
+
+### P2 - Important
+
+Exemple :
+
+* activité suspecte confirmée ;
+* compte utilisateur potentiellement compromis ;
+* accès non autorisé possible.
+
+Sarah et Dave doivent être informés rapidement et une investigation doit commencer.
+
+### P0 - Critique
+
+Une compromission confirmée ou probable de la base de données de production est un incident **P0**.
+
+Exemples :
+
+* accès non autorisé à la base ;
+* extraction de données ;
+* modification ou suppression de données ;
+* compte administrateur compromis ;
+* présence confirmée d'un attaquant.
+
+Escalade immédiate vers :
+
+1. Incident Commander ;
+2. CTO ;
+3. Security / CISO ;
+4. CEO ;
+5. équipe juridique si des données sont concernées.
+
+L'incident doit être traité immédiatement.
+
+## Contacts externes
+
+Selon la nature et l'impact de l'incident, l'équipe juridique et la direction déterminent s'il est nécessaire de contacter :
+
+* l'assureur cyber ;
+* le prestataire Cloud ;
+* les partenaires concernés ;
+* les autorités compétentes ;
+* les forces de l'ordre ;
+* les personnes ou clients concernés.
+
+Toute notification réglementaire doit respecter les délais et obligations applicables.
+
+---
+
+# 3. Identification
 
 L'objectif est de confirmer l'incident et d'évaluer son impact.
 
@@ -37,13 +111,15 @@ Les indicateurs peuvent inclure :
 ## Actions
 
 1. Noter immédiatement la date et l'heure de détection.
-2. Identifier le serveur concerné.
-3. Identifier les comptes utilisés.
-4. Rechercher les adresses IP suspectes.
-5. Vérifier les logs PostgreSQL.
-6. Vérifier les logs système et réseau.
-7. Vérifier les événements `auditd`.
-8. Déterminer si des données ont été consultées, modifiées ou supprimées.
+2. Informer l'Incident Commander.
+3. Identifier le serveur concerné.
+4. Identifier les comptes utilisés.
+5. Rechercher les adresses IP suspectes.
+6. Vérifier les logs PostgreSQL.
+7. Vérifier les logs système et réseau.
+8. Vérifier les événements `auditd`.
+9. Déterminer si des données ont été consultées, modifiées ou supprimées.
+10. Déterminer le niveau d'escalade P1, P2 ou P0.
 
 Exemples :
 
@@ -63,15 +139,13 @@ Les preuves doivent être conservées et ne doivent pas être modifiées ou supp
 
 ---
 
-# 3. Containment - Confinement
+# 4. Containment - Confinement
 
 L'objectif est d'empêcher l'attaquant de continuer ses actions tout en conservant les éléments nécessaires à l'enquête.
 
 ## Confinement immédiat
 
-Si une adresse IP malveillante est identifiée, la bloquer au niveau du firewall.
-
-Exemple :
+Si une adresse IP malveillante est identifiée :
 
 ```bash
 ufw deny from 203.0.113.50
@@ -98,7 +172,7 @@ Si un compte est compromis :
 * révoquer ses sessions ;
 * révoquer ses clés SSH ;
 * modifier les identifiants concernés ;
-* rechercher l'utilisation du même secret sur d'autres systèmes.
+* rechercher le même secret sur les autres systèmes.
 
 La clé partagée `nexus_master.pem`, si elle existe encore, doit être immédiatement révoquée.
 
@@ -106,15 +180,13 @@ La clé partagée `nexus_master.pem`, si elle existe encore, doit être immédia
 
 Si la compromission est importante, isoler le serveur concerné du reste du réseau.
 
-Ne pas supprimer immédiatement les logs, fichiers suspects ou autres preuves.
+Ne pas supprimer les logs, fichiers suspects ou autres preuves nécessaires à l'investigation.
 
 ---
 
-# 4. Eradication
+# 5. Eradication
 
 Une fois l'incident contenu, supprimer la cause de la compromission.
-
-## Actions
 
 Rechercher :
 
@@ -153,7 +225,7 @@ Supprimer les comptes, clés, services ou mécanismes de persistance identifiés
 
 Corriger la vulnérabilité utilisée pour l'intrusion.
 
-PostgreSQL ne doit notamment plus être exposé à :
+PostgreSQL ne doit plus être exposé à :
 
 ```text
 0.0.0.0/0
@@ -161,11 +233,17 @@ PostgreSQL ne doit notamment plus être exposé à :
 
 Le port `5432` doit uniquement être accessible depuis les systèmes explicitement autorisés.
 
-Les mots de passe, clés API, clés SSH et autres secrets potentiellement compromis doivent être renouvelés.
+Tous les secrets potentiellement compromis doivent être renouvelés :
+
+* mots de passe ;
+* clés SSH ;
+* clés API ;
+* tokens ;
+* identifiants de base de données.
 
 ---
 
-# 5. Recovery - Récupération
+# 6. Recovery - Récupération
 
 L'objectif est de restaurer les services sans réintroduire la compromission.
 
@@ -176,7 +254,7 @@ Avant toute restauration :
 * vérifier la date de la sauvegarde ;
 * vérifier son intégrité ;
 * vérifier qu'elle précède la compromission ;
-* s'assurer qu'elle ne contient pas de modification malveillante.
+* vérifier qu'elle ne contient pas de modification malveillante.
 
 Ne jamais restaurer automatiquement une sauvegarde dont l'intégrité est inconnue.
 
@@ -197,7 +275,7 @@ Si nécessaire :
 
 ## Surveillance renforcée
 
-Après la restauration, surveiller particulièrement :
+Après restauration, surveiller :
 
 * connexions PostgreSQL ;
 * connexions SSH ;
@@ -207,15 +285,36 @@ Après la restauration, surveiller particulièrement :
 * modifications de fichiers sensibles ;
 * tentatives d'authentification.
 
-La surveillance renforcée doit continuer jusqu'à ce que l'équipe ait suffisamment confiance dans l'intégrité du système.
+---
+
+# 7. Communication
+
+Pendant un incident P0, une communication claire doit être maintenue.
+
+## Message interne
+
+Exemple :
+
+> INCIDENT P0 - Une compromission potentielle de la base de données de production a été détectée. L'équipe de réponse aux incidents est activée. Ne modifiez pas les systèmes concernés sans autorisation de l'Incident Commander.
+
+Les employés ne doivent pas communiquer publiquement sur l'incident.
+
+Toute communication externe doit être validée par la direction, l'équipe juridique et l'équipe communication.
+
+Les informations suivantes doivent être communiquées aux responsables :
+
+* heure de détection ;
+* systèmes concernés ;
+* impact connu ;
+* actions de confinement réalisées ;
+* données potentiellement concernées ;
+* prochaines actions prévues.
 
 ---
 
-# 6. Lessons Learned - Retour d'expérience
+# 8. Lessons Learned - Retour d'expérience
 
-Après l'incident, Sarah, Dave et les responsables concernés doivent organiser une réunion de retour d'expérience.
-
-Cette réunion ne doit pas chercher un responsable individuel mais identifier les défaillances techniques et organisationnelles.
+Après l'incident, Sarah, Dave, Security et les responsables concernés doivent organiser une réunion de retour d'expérience.
 
 Les questions suivantes doivent être traitées :
 
@@ -223,17 +322,18 @@ Les questions suivantes doivent être traitées :
 * Quelle vulnérabilité a été exploitée ?
 * Quand la compromission a-t-elle commencé ?
 * Comment a-t-elle été détectée ?
-* Quelles données ont été consultées, volées, modifiées ou supprimées ?
+* Quelles données ont été affectées ?
 * Pourquoi les contrôles existants n'ont-ils pas empêché l'incident ?
 * Les logs étaient-ils suffisants ?
 * Les sauvegardes étaient-elles utilisables ?
 * Le confinement a-t-il été suffisamment rapide ?
-* Quelles mesures doivent être ajoutées ou améliorées ?
+* Quelles mesures doivent être améliorées ?
 
-Un rapport d'incident doit ensuite documenter :
+Un rapport doit documenter :
 
 ```text
 Date et heure
+Niveau de gravité
 Systèmes affectés
 Méthode d'attaque
 Comptes compromis
@@ -245,37 +345,38 @@ Cause racine
 Mesures correctives
 ```
 
-Les politiques, scripts et procédures de Nexus Financial doivent être mis à jour en fonction des conclusions.
+Les politiques, scripts et procédures doivent ensuite être mis à jour.
 
 ---
 
-# 7. Ordre de réponse
-
-En cas de compromission confirmée de la base de données :
+# 9. Cycle de réponse
 
 ```text
-DETECTION
-    |
-    v
+ALERTE
+   |
+   v
 IDENTIFICATION
-    |
-    v
+   |
+   v
+ESCALADE
+   |
+   v
 CONFINEMENT
-    |
-    v
+   |
+   v
 CONSERVATION DES PREUVES
-    |
-    v
+   |
+   v
 ERADICATION
-    |
-    v
-RESTAURATION
-    |
-    v
+   |
+   v
+RECUPERATION
+   |
+   v
 SURVEILLANCE
-    |
-    v
+   |
+   v
 RETOUR D'EXPERIENCE
 ```
 
-La priorité est de **contenir rapidement l'incident sans détruire les preuves**, puis de restaurer le service à partir d'un environnement dont l'intégrité a été vérifiée.
+En cas de compromission de la base de données, la priorité est de **déclencher rapidement l'escalade, contenir l'attaque, préserver les preuves et restaurer le service depuis un environnement fiable**.
