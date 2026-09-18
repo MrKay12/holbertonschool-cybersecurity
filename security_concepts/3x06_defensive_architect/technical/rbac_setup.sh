@@ -1,4 +1,3 @@
-```bash
 #!/bin/bash
 
 # Nexus Financial - RBAC Setup
@@ -19,14 +18,17 @@ echo "[+] Configuring RBAC..."
 
 echo "[+] Creating groups..."
 
-for group in devs ops auditors; do
-    if ! getent group "$group" >/dev/null 2>&1; then
-        groupadd "$group"
-        echo "[+] Group created: $group"
-    else
-        echo "[=] Group already exists: $group"
-    fi
-done
+if ! getent group devs >/dev/null 2>&1; then
+    groupadd devs
+fi
+
+if ! getent group ops >/dev/null 2>&1; then
+    groupadd ops
+fi
+
+if ! getent group auditors >/dev/null 2>&1; then
+    groupadd auditors
+fi
 
 # ---------------------------------------------------------
 # 2. Create dummy users
@@ -34,39 +36,30 @@ done
 
 echo "[+] Creating users..."
 
-create_user()
-{
-    USERNAME="$1"
+if ! id sarah >/dev/null 2>&1; then
+    useradd -m -s /bin/bash sarah
+fi
 
-    if ! id "$USERNAME" >/dev/null 2>&1; then
-        useradd -m -s /bin/bash "$USERNAME"
-        echo "[+] User created: $USERNAME"
-    else
-        echo "[=] User already exists: $USERNAME"
-    fi
-}
+if ! id dave >/dev/null 2>&1; then
+    useradd -m -s /bin/bash dave
+fi
 
-create_user "sarah"
-create_user "dave"
-create_user "auditor"
+if ! id auditor >/dev/null 2>&1; then
+    useradd -m -s /bin/bash auditor
+fi
 
 # ---------------------------------------------------------
-# 3. Assign users to RBAC groups
+# 3. Assign users to groups
 # ---------------------------------------------------------
 
 echo "[+] Assigning users to groups..."
 
-# Sarah: developer + operations
 usermod -aG devs,ops sarah
-
-# Dave: developer + read-only audit access
 usermod -aG devs,auditors dave
-
-# Auditor: audit access only
 usermod -aG auditors auditor
 
 # ---------------------------------------------------------
-# 4. Configure sudo permissions
+# 4. Configure sudoers
 # ---------------------------------------------------------
 
 echo "[+] Configuring sudoers..."
@@ -76,19 +69,15 @@ SUDOERS_FILE="/etc/sudoers.d/nexus-rbac"
 cat > "$SUDOERS_FILE" << EOF
 # Nexus Financial RBAC Policy
 
-# OPS members may restart and check Nginx
+# OPS can manage nginx without full root access
 %ops ALL=(root) /bin/systemctl restart nginx
 %ops ALL=(root) /bin/systemctl start nginx
 %ops ALL=(root) /bin/systemctl stop nginx
 %ops ALL=(root) /bin/systemctl status nginx
-
-# Developers have no unrestricted root access
-# Auditors have no sudo permissions
 EOF
 
 chmod 440 "$SUDOERS_FILE"
 
-# Validate sudoers configuration
 if ! visudo -cf "$SUDOERS_FILE"; then
     echo "Error: invalid sudoers configuration."
     rm -f "$SUDOERS_FILE"
@@ -96,38 +85,27 @@ if ! visudo -cf "$SUDOERS_FILE"; then
 fi
 
 # ---------------------------------------------------------
-# 5. Protect Nginx configuration
+# 5. Protect nginx configuration
 # ---------------------------------------------------------
 
-echo "[+] Protecting Nginx configuration..."
+echo "[+] Protecting nginx configuration..."
 
 if [ -d /etc/nginx ]; then
     chown -R root:root /etc/nginx
-
     find /etc/nginx -type d -exec chmod 755 {} \;
     find /etc/nginx -type f -exec chmod 644 {} \;
-
-    echo "[+] Nginx configuration protected."
 fi
 
 # ---------------------------------------------------------
-# 6. Configure read-only access to Nginx logs
+# 6. Read-only log access for auditors
 # ---------------------------------------------------------
 
-echo "[+] Configuring log access..."
+echo "[+] Configuring nginx log access..."
 
 if [ -d /var/log/nginx ]; then
-
-    # Root owns the files, auditors may read them
     chown -R root:auditors /var/log/nginx
-
-    # Directories: auditors can enter/read
     find /var/log/nginx -type d -exec chmod 750 {} \;
-
-    # Files: root read/write, auditors read only
     find /var/log/nginx -type f -exec chmod 640 {} \;
-
-    echo "[+] Auditors now have read-only access to Nginx logs."
 fi
 
 # ---------------------------------------------------------
@@ -136,45 +114,47 @@ fi
 
 echo "[+] Securing home directories..."
 
-for user in sarah dave auditor; do
+if [ -d /home/sarah ]; then
+    chown sarah:sarah /home/sarah
+    chmod 700 /home/sarah
+fi
 
-    HOME_DIR=$(getent passwd "$user" | cut -d: -f6)
+if [ -d /home/dave ]; then
+    chown dave:dave /home/dave
+    chmod 700 /home/dave
+fi
 
-    if [ -d "$HOME_DIR" ]; then
-        chown "$user:$user" "$HOME_DIR"
-        chmod 700 "$HOME_DIR"
-
-        echo "[+] Secured: $HOME_DIR"
-    fi
-done
-
-# ---------------------------------------------------------
-# 8. Remove dangerous sudo access
-# ---------------------------------------------------------
-
-echo "[+] Removing users from unrestricted sudo groups..."
-
-for user in sarah dave auditor; do
-
-    if id -nG "$user" | grep -qw sudo; then
-        gpasswd -d "$user" sudo || true
-    fi
-
-    if id -nG "$user" | grep -qw admin; then
-        gpasswd -d "$user" admin || true
-    fi
-
-done
+if [ -d /home/auditor ]; then
+    chown auditor:auditor /home/auditor
+    chmod 700 /home/auditor
+fi
 
 # ---------------------------------------------------------
-# 9. Final summary
+# 8. Remove unrestricted sudo access
+# ---------------------------------------------------------
+
+echo "[+] Removing unrestricted sudo access..."
+
+if id -nG sarah | grep -qw sudo; then
+    gpasswd -d sarah sudo || true
+fi
+
+if id -nG dave | grep -qw sudo; then
+    gpasswd -d dave sudo || true
+fi
+
+if id -nG auditor | grep -qw sudo; then
+    gpasswd -d auditor sudo || true
+fi
+
+# ---------------------------------------------------------
+# 9. Summary
 # ---------------------------------------------------------
 
 echo
 echo "[+] RBAC configuration completed."
 echo
-echo "------------------------------------------"
-echo "Groups:"
+echo "Groups created:"
 echo "  devs"
 echo "  ops"
 echo "  auditors"
@@ -185,20 +165,6 @@ echo "  dave    -> devs, auditors"
 echo "  auditor -> auditors"
 echo
 echo "Permissions:"
-echo "  Sarah:"
-echo "    - Can restart/start/stop/status Nginx"
-echo "    - No unrestricted root access"
-echo
-echo "  Dave:"
-echo "    - Can read Nginx logs"
-echo "    - Cannot modify Nginx configuration"
-echo "    - No sudo access"
-echo
-echo "  Auditor:"
-echo "    - Can read Nginx logs"
-echo "    - No sudo access"
-echo
-echo "Home directories:"
-echo "  chmod 700"
-echo "------------------------------------------"
-```
+echo "  ops      -> nginx service management through sudo"
+echo "  auditors -> read-only nginx logs"
+echo "  homes    -> chmod 700"
