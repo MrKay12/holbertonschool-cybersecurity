@@ -10,6 +10,7 @@ import re
 import secrets
 import sys
 from pathlib import Path
+from typing import Union
 
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 CONFIG_PATH = Path(__file__).resolve().with_name("config.ini")
@@ -28,9 +29,7 @@ def configure_logging() -> None:
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
 
-    file_handler = logging.FileHandler(
-        "breach_check.log", encoding="utf-8"
-    )
+    file_handler = logging.FileHandler("breach_check.log", encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
 
@@ -39,7 +38,7 @@ def configure_logging() -> None:
 
 
 def load_config(
-    filename: str | Path = CONFIG_PATH,
+    filename: Union[str, Path] = CONFIG_PATH,
 ) -> configparser.ConfigParser:
     """Load configuration and populate security policy settings."""
     global MIN_LENGTH, COMMON_PASSWORDS, CONFIG_SALT
@@ -231,7 +230,7 @@ def main() -> None:
         email, password = line.split(":", 1)
         status = check_policy(password)
 
-        # Use the configured base salt and a unique random suffix per record.
+        # Keep a unique per-record salt while incorporating the configured salt.
         salt = f"{CONFIG_SALT}{secrets.token_hex(16)}"
         password_hash = hash_password(password, salt)
 
@@ -285,16 +284,13 @@ def main() -> None:
                     f"Compliant passwords: {compliant_count}\n"
                 )
                 report.write(
-                    "\nHashed records "
-                    "(email | salt | SHA-256 | policy)\n"
+                    "\nHashed records (email | salt | SHA-256 | policy)\n"
                 )
 
                 for record in valid_records:
                     report.write(
-                        f"{record['email']} | "
-                        f"{record['salt']} | "
-                        f"{record['password_hash']} | "
-                        f"{record['status']}\n"
+                        f"{record['email']} | {record['salt']} | "
+                        f"{record['password_hash']} | {record['status']}\n"
                     )
 
             logging.info("Report written to: %s", args.output)
