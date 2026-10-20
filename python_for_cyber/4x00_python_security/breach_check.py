@@ -3,31 +3,62 @@
 """BreachCheck command-line entry point."""
 
 import argparse
+import logging
 import re
 import sys
 
 
+LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+
+
+def configure_logging() -> None:
+    """Configure INFO logging to console and DEBUG logging to file."""
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    logger.handlers.clear()
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+
+    file_handler = logging.FileHandler(
+        "breach_check.log", encoding="utf-8"
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+
+
 def read_file(filename: str) -> list:
-    """Read a text file and handle common file errors."""
+    """Read a file and handle common errors."""
     try:
         with open(filename, "r", encoding="utf-8") as file:
-            return file.readlines()
+            lines = file.readlines()
+        logging.debug("Successfully read input file: %s", filename)
+        return lines
     except FileNotFoundError:
-        print(f"[ERROR] File not found: {filename}", file=sys.stderr)
+        logging.error("File not found: %s", filename)
         sys.exit(1)
     except PermissionError:
-        print(f"[ERROR] Permission denied: {filename}", file=sys.stderr)
+        logging.error("Permission denied: %s", filename)
         sys.exit(1)
 
 
 def clean_data(lines: list) -> list:
-    """Strip whitespace and discard blank lines and comments."""
+    """Remove whitespace, blank lines, and comments."""
     cleaned_lines = []
+
     for line in lines:
         cleaned_line = line.strip()
         if not cleaned_line or cleaned_line.startswith("#"):
             continue
         cleaned_lines.append(cleaned_line)
+
+    logging.debug(
+        "Cleaned input: %d lines retained", len(cleaned_lines)
+    )
     return cleaned_lines
 
 
@@ -48,7 +79,7 @@ def validate_line(line: str) -> bool:
 
 
 def main():
-    """Parse arguments and start BreachCheck."""
+    """Parse arguments and run BreachCheck."""
     parser = argparse.ArgumentParser(
         description="BreachCheck - analyze an input file for potential breaches."
     )
@@ -66,16 +97,35 @@ def main():
     )
 
     args = parser.parse_args()
+    configure_logging()
 
-    print("BreachCheck v1.0 startup...")
+    logging.info("BreachCheck v1.0 startup...")
+    logging.info("Processing file: %s", args.file)
+
     lines = read_file(args.file)
     cleaned_lines = clean_data(lines)
-    valid_lines = [line for line in cleaned_lines if validate_line(line)]
+    valid_lines = []
+
+    for line_number, line in enumerate(cleaned_lines, start=1):
+        logging.debug(
+            "Starting regex check on line %d...", line_number
+        )
+        if validate_line(line):
+            valid_lines.append(line)
+        else:
+            logging.debug(
+                "Line %d failed format validation", line_number
+            )
+
+    logging.info(
+        "Processing complete: %d valid lines", len(valid_lines)
+    )
 
     if args.verbose:
-        print(f"[INFO] Read {len(lines)} lines from {args.file}")
-        print(f"[INFO] {len(cleaned_lines)} lines remain after cleaning")
-        print(f"[INFO] {len(valid_lines)} lines passed format validation")
+        logging.info("Read %d lines from %s", len(lines), args.file)
+        logging.info(
+            "%d lines remain after cleaning", len(cleaned_lines)
+        )
 
 
 if __name__ == "__main__":
