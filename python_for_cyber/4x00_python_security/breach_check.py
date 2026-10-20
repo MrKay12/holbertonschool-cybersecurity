@@ -3,8 +3,10 @@
 """BreachCheck - command-line password policy auditing tool."""
 
 import argparse
+import hashlib
 import logging
 import re
+import secrets
 import sys
 
 
@@ -13,18 +15,17 @@ COMMON_PASSWORDS = {"password", "123456"}
 
 
 def configure_logging() -> None:
-    """Configure INFO logging to console and DEBUG logging to file."""
+    """Configure INFO logging to the console and DEBUG logging to a file."""
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     logger.handlers.clear()
 
-    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(logging.Formatter(LOG_FORMAT))
 
     file_handler = logging.FileHandler(
-        "breach_check.log",
-        encoding="utf-8",
+        "breach_check.log", encoding="utf-8"
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
@@ -34,7 +35,7 @@ def configure_logging() -> None:
 
 
 def read_file(filename: str) -> list:
-    """Read a text file and exit cleanly on common file errors."""
+    """Read a file and handle common errors."""
     try:
         with open(filename, "r", encoding="utf-8") as file:
             return file.readlines()
@@ -47,45 +48,38 @@ def read_file(filename: str) -> list:
     except IsADirectoryError:
         logging.error("Path is a directory, not a file: %s", filename)
         sys.exit(1)
-    except UnicodeDecodeError:
-        logging.error("File is not valid UTF-8 text: %s", filename)
-        sys.exit(1)
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         logging.error("Unable to read file %s: %s", filename, error)
         sys.exit(1)
 
 
 def clean_data(lines: list) -> list:
-    """Strip surrounding whitespace and discard blank lines and comments."""
+    """Remove surrounding whitespace, blank lines, and comments."""
     cleaned_lines = []
 
     for line in lines:
         cleaned_line = line.strip()
-
         if not cleaned_line or cleaned_line.startswith("#"):
             continue
-
         cleaned_lines.append(cleaned_line)
 
+    logging.debug("Cleaned input: %d lines retained", len(cleaned_lines))
     return cleaned_lines
 
 
 def validate_line(line: str) -> bool:
-    """Check that a line follows the email:password format."""
+    """Validate the email:password format."""
     match = re.fullmatch(r"([^:]+):([^:]+)", line)
-
     if match is None:
         return False
 
     email = match.group(1)
-
     email_pattern = (
         r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+"
         r"@"
         r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
         r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+"
     )
-
     return re.fullmatch(email_pattern, email) is not None
 
 
@@ -101,31 +95,27 @@ def check_policy(password: str) -> str:
     return "COMPLIANT"
 
 
+def hash_password(password: str, salt: str) -> str:
+    """Hash a password and salt using SHA-256."""
+    password_and_salt = password.encode("utf-8") + salt.encode("utf-8")
+    return hashlib.sha256(password_and_salt).hexdigest()
+
+
 def main() -> None:
     """Parse arguments and run the BreachCheck audit."""
     parser = argparse.ArgumentParser(
-        description=(
-            "BreachCheck - validate input records and audit "
-            "password policy compliance."
-        )
+        description="BreachCheck - validate records and audit password policy."
     )
     parser.add_argument(
-        "-f",
-        "--file",
-        required=True,
-        type=str,
-        help="path to the input file to analyze (required)",
+        "-f", "--file", required=True,
+        help="path to the input file to analyze",
     )
     parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
+        "-v", "--verbose", action="store_true",
         help="enable verbose logging",
     )
     parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
+        "-o", "--output",
         help="path to the output report file",
     )
 
@@ -137,7 +127,6 @@ def main() -> None:
 
     lines = read_file(args.file)
     cleaned_lines = clean_data(lines)
-
     valid_records = []
     invalid_count = 0
 
@@ -152,7 +141,16 @@ def main() -> None:
         email, password = line.split(":", 1)
         status = check_policy(password)
 
-        valid_records.append((email, status))
+        # Use a distinct random salt for each password.
+        salt = secrets.token_hex(16)
+        password_hash = hash_password(password, salt)
+
+        valid_records.append({
+            "email": email,
+            "salt": salt,
+            "password_hash": password_hash,
+            "status": status,
+        })
 
         logging.debug(
             "Line %d passed validation; policy status: %s",
@@ -161,10 +159,10 @@ def main() -> None:
         )
 
     weak_count = sum(
-        1 for _, status in valid_records if status == "WEAK"
+        record["status"] == "WEAK" for record in valid_records
     )
     compliant_count = sum(
-        1 for _, status in valid_records if status == "COMPLIANT"
+        record["status"] == "COMPLIANT" for record in valid_records
     )
 
     logging.info("Processing complete.")
@@ -189,10 +187,22 @@ def main() -> None:
                 report.write(f"Valid records: {len(valid_records)}\n")
                 report.write(f"Weak passwords: {weak_count}\n")
                 report.write(f"Compliant passwords: {compliant_count}\n")
+                report.write(
+                    "\nHashed records (email | salt | SHA-256 | policy)\n"
+                )
+
+                for record in valid_records:
+                    report.write(
+                        f"{record['email']} | {record['salt']} | "
+                        f"{record['password_hash']} | {record['status']}\n"
+                    )
 
             logging.info("Report written to: %s", args.output)
+
         except OSError as error:
-            logging.error("Unable to write report %s: %s", args.output, error)
+            logging.error(
+                "Unable to write report %s: %s", args.output, error
+            )
             sys.exit(1)
 
 
