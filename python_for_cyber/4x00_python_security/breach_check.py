@@ -47,7 +47,7 @@ def load_config(
     config_path = Path(filename)
 
     if not config_path.is_file():
-        print("[ERROR] Config file missing", file=sys.stderr)
+        print("[ERROR] config file missing", file=sys.stderr)
         raise SystemExit(1)
 
     try:
