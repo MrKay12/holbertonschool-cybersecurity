@@ -9,8 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Iterator, Union
-
-from utils import clean_data, hash_password, validate_line
+from utils import clean_data, hash_password, read_file, validate_line
 
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 CONFIG_PATH = Path(__file__).resolve().with_name("config.ini")

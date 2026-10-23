@@ -7,6 +7,32 @@ import re
 from typing import Iterable, Iterator
 
 
+def read_file(filename: str) -> Iterator[str]:
+    """Yield file lines one at a time using a context manager."""
+    try:
+        with open(filename, "r", encoding="utf-8") as file:
+            for line in file:
+                yield line
+
+        logging.debug("Successfully read input file: %s", filename)
+
+    except FileNotFoundError:
+        logging.error("File not found: %s", filename)
+        raise SystemExit(1)
+
+    except PermissionError:
+        logging.error("Permission denied: %s", filename)
+        raise SystemExit(1)
+
+    except IsADirectoryError:
+        logging.error("Path is a directory, not a file: %s", filename)
+        raise SystemExit(1)
+
+    except (OSError, UnicodeDecodeError) as error:
+        logging.error("Unable to read file %s: %s", filename, error)
+        raise SystemExit(1) from error
+
+
 def clean_data(lines: Iterable[str]) -> Iterator[str]:
     """Yield nonblank, non-comment lines after stripping whitespace."""
     cleaned_count = 0
