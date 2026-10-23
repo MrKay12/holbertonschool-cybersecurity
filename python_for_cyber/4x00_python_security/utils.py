@@ -4,11 +4,12 @@
 import hashlib
 import logging
 import re
+from typing import Iterable, Iterator
 
 
-def clean_data(lines: list) -> list:
-    """Strip surrounding whitespace and discard blank lines and comments."""
-    cleaned_lines = []
+def clean_data(lines: Iterable[str]) -> Iterator[str]:
+    """Yield nonblank, non-comment lines after stripping whitespace."""
+    cleaned_count = 0
 
     for line in lines:
         cleaned_line = line.strip()
@@ -16,10 +17,10 @@ def clean_data(lines: list) -> list:
         if not cleaned_line or cleaned_line.startswith("#"):
             continue
 
-        cleaned_lines.append(cleaned_line)
+        cleaned_count += 1
+        yield cleaned_line
 
-    logging.debug("Cleaned input: %d lines retained", len(cleaned_lines))
-    return cleaned_lines
+    logging.debug("Cleaned input: %d lines retained", cleaned_count)
 
 
 def validate_line(line: str) -> bool:

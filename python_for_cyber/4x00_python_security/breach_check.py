@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """BreachCheck - command-line password policy auditing tool."""
 
@@ -7,8 +6,9 @@ import configparser
 import logging
 import secrets
 import sys
+import tempfile
 from pathlib import Path
-from typing import Union
+from typing import Iterator, Union
 
 from utils import clean_data, hash_password, validate_line
 
@@ -69,30 +69,23 @@ def load_config(
             raise ValueError("SECURITY.Salt must not be empty")
 
         if MIN_LENGTH < 1:
-            raise ValueError(
-                "SECURITY.MinLength must be greater than zero"
-            )
+            raise ValueError("SECURITY.MinLength must be greater than zero")
 
-    except (
-        configparser.Error,
-        KeyError,
-        ValueError,
-        OSError,
-    ) as error:
+    except (configparser.Error, KeyError, ValueError, OSError) as error:
         print(f"[ERROR] Invalid config file: {error}", file=sys.stderr)
         raise SystemExit(1) from error
 
     return config
 
 
-def read_file(filename: str) -> list:
-    """Read a text file and handle common file errors."""
+def read_file(filename: str) -> Iterator[str]:
+    """Yield input lines one at a time and handle common file errors."""
     try:
         with open(filename, "r", encoding="utf-8") as file:
-            lines = file.readlines()
+            for line in file:
+                yield line
 
         logging.debug("Successfully read input file: %s", filename)
-        return lines
 
     except FileNotFoundError:
         logging.error("File not found: %s", filename)
@@ -164,101 +157,113 @@ def main() -> None:
     logging.info("BreachCheck v1.0 startup...")
     logging.info("Processing file: %s", args.file)
 
-    lines = read_file(args.file)
-    cleaned_lines = clean_data(lines)
-
-    valid_records = []
+    input_lines = 0
+    clean_lines = 0
     invalid_count = 0
+    valid_count = 0
+    weak_count = 0
+    compliant_count = 0
 
-    for line_number, line in enumerate(cleaned_lines, start=1):
-        logging.debug(
-            "Starting regex check on line %d...", line_number
-        )
+    with tempfile.TemporaryFile(
+        mode="w+t",
+        encoding="utf-8",
+    ) as records_file:
 
-        if not validate_line(line):
-            invalid_count += 1
+        def counted_lines() -> Iterator[str]:
+            nonlocal input_lines
+
+            for raw_line in read_file(args.file):
+                input_lines += 1
+                yield raw_line
+
+        for line_number, line in enumerate(
+            clean_data(counted_lines()),
+            start=1,
+        ):
+            clean_lines += 1
+
             logging.debug(
-                "Line %d failed format validation", line_number
+                "Starting regex check on line %d...",
+                line_number,
             )
-            continue
 
-        email, password = line.split(":", 1)
-        status = check_policy(password)
+            if not validate_line(line):
+                invalid_count += 1
 
-        # Keep a unique per-record salt while incorporating the configured salt.
-        salt = f"{CONFIG_SALT}{secrets.token_hex(16)}"
-        password_hash = hash_password(password, salt)
+                logging.debug(
+                    "Line %d failed format validation",
+                    line_number,
+                )
+                continue
 
-        valid_records.append(
-            {
-                "email": email,
-                "salt": salt,
-                "password_hash": password_hash,
-                "status": status,
-            }
-        )
+            email, password = line.split(":", 1)
+            status = check_policy(password)
+            salt = f"{CONFIG_SALT}{secrets.token_hex(16)}"
+            password_hash = hash_password(password, salt)
 
-        logging.debug(
-            "Line %d passed validation; policy status: %s",
-            line_number,
-            status,
-        )
+            valid_count += 1
 
-    weak_count = sum(
-        record["status"] == "WEAK"
-        for record in valid_records
-    )
+            if status == "WEAK":
+                weak_count += 1
+            else:
+                compliant_count += 1
 
-    compliant_count = sum(
-        record["status"] == "COMPLIANT"
-        for record in valid_records
-    )
+            records_file.write(
+                f"{email} | {salt} | {password_hash} | {status}\n"
+            )
 
-    logging.info("Processing complete.")
-    logging.info("Input lines: %d", len(lines))
-    logging.info("Clean lines: %d", len(cleaned_lines))
-    logging.info("Invalid records: %d", invalid_count)
-    logging.info("Valid records: %d", len(valid_records))
-    logging.info("Weak passwords: %d", weak_count)
-    logging.info("Compliant passwords: %d", compliant_count)
+            logging.debug(
+                "Line %d passed validation; policy status: %s",
+                line_number,
+                status,
+            )
+
+        logging.info("Processing complete.")
+        logging.info("Input lines: %d", input_lines)
+        logging.info("Clean lines: %d", clean_lines)
+        logging.info("Invalid records: %d", invalid_count)
+        logging.info("Valid records: %d", valid_count)
+        logging.info("Weak passwords: %d", weak_count)
+        logging.info("Compliant passwords: %d", compliant_count)
+
+        if args.output:
+            try:
+                with open(
+                    args.output,
+                    "w",
+                    encoding="utf-8",
+                ) as report:
+                    report.write("BreachCheck v1.0 Report\n")
+                    report.write("======================\n")
+                    report.write(f"Input lines: {input_lines}\n")
+                    report.write(f"Clean lines: {clean_lines}\n")
+                    report.write(f"Invalid records: {invalid_count}\n")
+                    report.write(f"Valid records: {valid_count}\n")
+                    report.write(f"Weak passwords: {weak_count}\n")
+                    report.write(
+                        f"Compliant passwords: {compliant_count}\n"
+                    )
+                    report.write(
+                        "\nHashed records (email | salt | SHA-256 | policy)\n"
+                    )
+
+                    records_file.seek(0)
+
+                    for record_line in records_file:
+                        report.write(record_line)
+
+                logging.info("Report written to: %s", args.output)
+
+            except OSError as error:
+                logging.error(
+                    "Unable to write report %s: %s",
+                    args.output,
+                    error,
+                )
+                raise SystemExit(1) from error
 
     if args.verbose:
         logging.info("Verbose mode enabled.")
-
-    if args.output:
-        try:
-            with open(args.output, "w", encoding="utf-8") as report:
-                report.write("BreachCheck v1.0 Report\n")
-                report.write("======================\n")
-                report.write(f"Input lines: {len(lines)}\n")
-                report.write(f"Clean lines: {len(cleaned_lines)}\n")
-                report.write(f"Invalid records: {invalid_count}\n")
-                report.write(f"Valid records: {len(valid_records)}\n")
-                report.write(f"Weak passwords: {weak_count}\n")
-                report.write(
-                    f"Compliant passwords: {compliant_count}\n"
-                )
-                report.write(
-                    "\nHashed records (email | salt | SHA-256 | policy)\n"
-                )
-
-                for record in valid_records:
-                    report.write(
-                        f"{record['email']} | "
-                        f"{record['salt']} | "
-                        f"{record['password_hash']} | "
-                        f"{record['status']}\n"
-                    )
-
-            logging.info("Report written to: %s", args.output)
-
-        except OSError as error:
-            logging.error(
-                "Unable to write report %s: %s",
-                args.output,
-                error,
-            )
-            raise SystemExit(1) from error
 
 
 if __name__ == "__main__":
