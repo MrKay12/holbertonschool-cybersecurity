@@ -4,13 +4,13 @@
 
 import argparse
 import configparser
-import hashlib
 import logging
-import re
 import secrets
 import sys
 from pathlib import Path
 from typing import Union
+
+from utils import clean_data, hash_password, validate_line
 
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 CONFIG_PATH = Path(__file__).resolve().with_name("config.ini")
@@ -111,43 +111,6 @@ def read_file(filename: str) -> list:
         raise SystemExit(1) from error
 
 
-def clean_data(lines: list) -> list:
-    """Strip surrounding whitespace and discard blank lines and comments."""
-    cleaned_lines = []
-
-    for line in lines:
-        cleaned_line = line.strip()
-
-        if not cleaned_line or cleaned_line.startswith("#"):
-            continue
-
-        cleaned_lines.append(cleaned_line)
-
-    logging.debug(
-        "Cleaned input: %d lines retained", len(cleaned_lines)
-    )
-    return cleaned_lines
-
-
-def validate_line(line: str) -> bool:
-    """Return True if line matches email:password with a plausible email."""
-    match = re.fullmatch(r"([^:]+):([^:]+)", line)
-
-    if match is None:
-        return False
-
-    email = match.group(1)
-
-    email_pattern = (
-        r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+"
-        r"@"
-        r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
-        r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+"
-    )
-
-    return re.fullmatch(email_pattern, email) is not None
-
-
 def check_policy(password: str) -> str:
     """Return WEAK or COMPLIANT using the loaded configuration policy."""
     if MIN_LENGTH is None:
@@ -161,14 +124,6 @@ def check_policy(password: str) -> str:
         return "WEAK"
 
     return "COMPLIANT"
-
-
-def hash_password(password: str, salt: str) -> str:
-    """Return the SHA-256 hex digest of the UTF-8 password followed by salt."""
-    password_and_salt = (
-        password.encode("utf-8") + salt.encode("utf-8")
-    )
-    return hashlib.sha256(password_and_salt).hexdigest()
 
 
 def main() -> None:
@@ -289,8 +244,10 @@ def main() -> None:
 
                 for record in valid_records:
                     report.write(
-                        f"{record['email']} | {record['salt']} | "
-                        f"{record['password_hash']} | {record['status']}\n"
+                        f"{record['email']} | "
+                        f"{record['salt']} | "
+                        f"{record['password_hash']} | "
+                        f"{record['status']}\n"
                     )
 
             logging.info("Report written to: %s", args.output)
