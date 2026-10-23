@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """Utility functions for cleaning, validating, and hashing BreachCheck data."""
 
