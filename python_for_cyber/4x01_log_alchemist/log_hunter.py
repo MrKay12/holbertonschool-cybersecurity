@@ -11,7 +11,7 @@ def read_stream(file_path: str):
             for line in file:
                 yield line
     except FileNotFoundError:
-        print(f"[ERROR] File not found: {file_path]")
+        print(f"[ERROR] File not found: {file_path}")
 
 
 if __name__ == "__main__":
