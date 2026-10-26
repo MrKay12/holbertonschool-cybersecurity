@@ -2,6 +2,7 @@
 """LogHunter - Log Analysis Engine."""
 
 import argparse
+import json
 import re
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
@@ -26,7 +27,7 @@ IP_PATTERN = re.compile(
     r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
 )
 
-SSQLI_SIGNATURES = [
+SQLI_SIGNATURES = [
     re.compile(r"union\s+select", re.IGNORECASE),
     re.compile(r"'\s*or\s+'?1'?\s*=\s*'?1", re.IGNORECASE),
     re.compile(r"\bor\s+1\s*=\s*1", re.IGNORECASE),
@@ -104,7 +105,12 @@ class LogEntry:
 def read_stream(file_path):
     """Yield lines from a log file."""
     try:
-        with open(file_path, "r", encoding="utf-8", errors="replace") as file:
+        with open(
+            file_path,
+            "r",
+            encoding="utf-8",
+            errors="replace",
+        ) as file:
             for line in file:
                 yield line.rstrip("\n")
     except FileNotFoundError:
@@ -189,9 +195,8 @@ def filter_logs(entries, ip=None, status=None, service=None):
         if ip and entry.ip != ip:
             continue
 
-        if status is not None:
-            if str(entry.status) != str(status):
-                continue
+        if status is not None and str(entry.status) != str(status):
+            continue
 
         if service and entry.service != service:
             continue
@@ -377,12 +382,47 @@ def correlate_events(entries):
             states[ip].clear()
 
 
+def export_report(alerts, filename, format="json"):
+    """Export alert dictionaries or LogEntry objects to a file."""
+    if format.lower() != "json":
+        raise ValueError(f"Unsupported report format: {format}")
+
+    report_data = []
+
+    for alert in alerts:
+        if isinstance(alert, dict):
+            report_data.append(alert)
+        elif isinstance(alert, LogEntry):
+            report_data.append(vars(alert).copy())
+        elif hasattr(alert, "__dict__"):
+            report_data.append(vars(alert).copy())
+        else:
+            raise TypeError(
+                "Each alert must be a dictionary or an object."
+            )
+
+    with open(filename, "w", encoding="utf-8") as report_file:
+        json.dump(
+            report_data,
+            report_file,
+            indent=2,
+            ensure_ascii=False,
+        )
+        report_file.write("\n")
+
+    return len(report_data)
+
+
 def main():
     """Run the LogHunter analysis pipeline."""
     parser = argparse.ArgumentParser(
         description="Analyze Apache and Syslog files."
     )
     parser.add_argument("file", help="Path to the log file")
+    parser.add_argument(
+        "--report",
+        help="Export detected alerts to a JSON report",
+    )
     args = parser.parse_args()
 
     entries = []
@@ -399,14 +439,22 @@ def main():
         analyze_user_agent(entry)
         check_threat_intel(entry)
 
+    alerts = []
+
     print("\n--- SQLi Detection ---")
     sqli_count = 0
 
     for entry in entries:
         detect_sqli(entry)
+
         if entry.attack_type == "SQLi":
             sqli_count += 1
             print(f"    {entry.ip}: SQLi detected")
+            alerts.append({
+                "ip": entry.ip,
+                "attack_type": "SQLi",
+                "alert_type": "SQLi",
+            })
 
     print(f"[*] SQLi entries: {sqli_count}")
 
@@ -415,45 +463,61 @@ def main():
 
     for entry in entries:
         detect_xss(entry)
+
         if entry.attack_type == "XSS":
             xss_count += 1
             print(f"    {entry.ip}: XSS detected")
+            alerts.append({
+                "ip": entry.ip,
+                "attack_type": "XSS",
+                "alert_type": "XSS",
+            })
 
     print(f"[*] XSS entries: {xss_count}")
 
     print("\n--- Brute Force ---")
     brute_force_alerts = list(detect_bruteforce(entries))
+    alerts.extend(brute_force_alerts)
+
     print(f"[*] BRUTE_FORCE alerts: {len(brute_force_alerts)}")
 
     for alert in brute_force_alerts:
-        print(
-            f"    {alert['ip']}: "
-            f"{alert['count']} failures"
-        )
+        print(f"    {alert['ip']}: {alert['count']} failures")
 
     print("\n--- Burst Detection ---")
     burst_alerts = list(detect_burst(entries))
+    alerts.extend(burst_alerts)
+
     print(f"[*] BURST alerts: {len(burst_alerts)}")
 
     for alert in burst_alerts:
         print(
-            f"    {alert['ip']}: "
-            f"{alert['count']} requests in "
+            f"    {alert['ip']}: {alert['count']} requests in "
             f"{alert['window']}s window"
         )
 
     print("\n--- Correlation ---")
-
-    # SQLi detection must run before event correlation.
-    for entry in entries:
-        detect_sqli(entry)
-
     incidents = list(correlate_events(entries))
+    alerts.extend(incidents)
+
     print("[*] CRITICAL INCIDENTS:")
 
     for incident in incidents:
         stages = " -> ".join(incident["stages"])
         print(f"    {incident['ip']}: {stages}")
+
+    if args.report:
+        try:
+            count = export_report(alerts, args.report)
+            print(
+                f"\n[*] Report exported: {args.report} "
+                f"({count} alerts)"
+            )
+        except (OSError, TypeError, ValueError) as error:
+            parser.error(f"Could not export report: {error}")
+    else:
+        print(f"\n[*] Total alerts: {len(alerts)}")
+        print("[*] Use --report <file> to export.")
 
 
 if __name__ == "__main__":
