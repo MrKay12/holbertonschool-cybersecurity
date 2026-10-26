@@ -45,6 +45,7 @@ class LogEntry:
         method=None,
         path=None,
         status=None,
+        size=None,
         user_agent="",
     ):
         """Initialize a normalized log entry."""
@@ -56,6 +57,7 @@ class LogEntry:
         self.method = method
         self.path = path
         self.status = status
+        self.size = size
         self.user_agent = user_agent
         self.country = "UNKNOWN"
         self.is_bot = False
@@ -93,6 +95,12 @@ def normalize_entry(parsed_dict, log_type, raw_line="") -> LogEntry:
         status = int(parsed_dict["status"])
         method = parsed_dict["method"]
         path = parsed_dict["path"]
+        size_value = parsed_dict.get("size")
+        size = (
+            int(size_value)
+            if size_value is not None and size_value.isdigit()
+            else None
+        )
         user_agent = parsed_dict.get("user_agent") or ""
         message = f"{method} {path} {status}"
 
@@ -105,6 +113,7 @@ def normalize_entry(parsed_dict, log_type, raw_line="") -> LogEntry:
             method=method,
             path=path,
             status=status,
+            size=size,
             user_agent=user_agent,
         )
 
@@ -147,7 +156,7 @@ def analyze_user_agent(log_entry):
 
     combined_text = " ".join(
         str(field or "") for field in fields
-    ).casefold()
+    ).lower()
 
     log_entry.is_bot = any(
         signature in combined_text
