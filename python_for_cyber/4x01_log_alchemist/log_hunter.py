@@ -26,7 +26,7 @@ IP_PATTERN = re.compile(
     r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
 )
 
-SQLI_SIGNATURES = [
+SSQLI_SIGNATURES = [
     re.compile(r"union\s+select", re.IGNORECASE),
     re.compile(r"'\s*or\s+'?1'?\s*=\s*'?1", re.IGNORECASE),
     re.compile(r"\bor\s+1\s*=\s*1", re.IGNORECASE),
@@ -36,7 +36,7 @@ SQLI_SIGNATURES = [
     re.compile(r"\bsleep\s*\(", re.IGNORECASE),
     re.compile(r"\bbenchmark\s*\(", re.IGNORECASE),
     re.compile(r"%27\s*or", re.IGNORECASE),
-)
+]
 
 XSS_SIGNATURES = [
     re.compile(r"<\s*script", re.IGNORECASE),
