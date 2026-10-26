@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """LogHunter - Log Analysis Engine."""
 
@@ -25,19 +24,13 @@ def read_stream(file_path: str):
 
 
 def parse_apache_line(line: str) -> dict:
-    """Parse an Apache access log line into a dictionary."""
+    """Parse an Apache access log line."""
     match = re.search(APACHE_PATTERN, line)
 
-    if not match:
+    if match is None:
         return None
 
-    data = match.groupdict()
-    data["status"] = int(data["status"])
-    data["size"] = (
-        int(data["size"]) if data["size"] != "-" else 0
-    )
-
-    return data
+    return match.groupdict()
 
 
 if __name__ == "__main__":
@@ -52,7 +45,7 @@ if __name__ == "__main__":
     syslog_lines = 0
 
     for line in read_stream(args.file):
-        if parse_apache_line(line):
+        if parse_apache_line(line) is not None:
             apache_lines += 1
 
     print("--- Parsing ---")
