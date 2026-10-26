@@ -1,7 +1,17 @@
+
 #!/usr/bin/env python3
 """LogHunter - Log Analysis Engine."""
 
 import argparse
+import re
+
+
+APACHE_PATTERN = re.compile(
+    r'(?P<ip>\S+) \S+ \S+ '
+    r'\[(?P<date>[^\]]+)\] '
+    r'"(?P<method>\S+) (?P<path>\S+) [^"]+" '
+    r'(?P<status>\d{3}) (?P<size>\d+|-)'
+)
 
 
 def read_stream(file_path: str):
@@ -14,6 +24,22 @@ def read_stream(file_path: str):
         print(f"[ERROR] File not found: {file_path}")
 
 
+def parse_apache_line(line: str) -> dict:
+    """Parse an Apache access log line into a dictionary."""
+    match = re.search(APACHE_PATTERN, line)
+
+    if not match:
+        return None
+
+    data = match.groupdict()
+    data["status"] = int(data["status"])
+    data["size"] = (
+        int(data["size"]) if data["size"] != "-" else 0
+    )
+
+    return data
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Path to the log file")
@@ -22,12 +48,14 @@ if __name__ == "__main__":
     print("[*] LogHunter - Log Analysis Engine")
     print(f"[*] Reading: {args.file}")
 
-    lines_read = 0
+    apache_lines = 0
+    syslog_lines = 0
 
-    for _ in read_stream(args.file):
-        lines_read += 1
+    for line in read_stream(args.file):
+        if parse_apache_line(line):
+            apache_lines += 1
 
-    if lines_read == 0:
-        print("[!] No data to process. Exiting.")
-    else:
-        print(f"[*] Lines read: {lines_read}")
+    print("--- Parsing ---")
+    print(f"[*] Apache lines:  {apache_lines}")
+    print(f"[*] Syslog lines:  {syslog_lines}")
+    print(f"[*] Total parsed:  {apache_lines + syslog_lines}")
