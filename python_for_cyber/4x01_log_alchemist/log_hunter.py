@@ -65,20 +65,16 @@ def read_stream(file_path: str):
 def parse_apache_line(line: str) -> dict:
     """Parse an Apache access log line."""
     match = re.search(APACHE_PATTERN, line)
-
     if match is None:
         return None
-
     return match.groupdict()
 
 
 def parse_syslog_line(line: str) -> dict:
     """Parse a Syslog line."""
     match = re.search(SYSLOG_PATTERN, line)
-
     if match is None:
         return None
-
     return match.groupdict()
 
 
@@ -120,6 +116,13 @@ def normalize_entry(parsed_dict, log_type, raw_line="") -> LogEntry:
     raise ValueError(f"Unsupported log type: {log_type}")
 
 
+def filter_logs(stream, status_codes=[404, 500]):
+    """Yield entries whose status matches one of the requested codes."""
+    for entry in stream:
+        if getattr(entry, "status", None) in status_codes:
+            yield entry
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Path to the log file")
@@ -130,43 +133,11 @@ if __name__ == "__main__":
 
     apache_lines = 0
     syslog_lines = 0
+    entries = []
     sample_entry = None
 
     for line in read_stream(args.file):
         parsed = parse_apache_line(line)
 
         if parsed is not None:
-            apache_lines += 1
-            entry = normalize_entry(parsed, "apache", line)
-        else:
-            parsed = parse_syslog_line(line)
-
-            if parsed is not None:
-                syslog_lines += 1
-                entry = normalize_entry(parsed, "syslog", line)
-            else:
-                continue
-
-        if sample_entry is None:
-            sample_entry = entry
-
-    print("--- Parsing ---")
-    print(f"[*] Apache lines:  {apache_lines}")
-    print(f"[*] Syslog lines:  {syslog_lines}")
-    print(f"[*] Total parsed:  {apache_lines + syslog_lines}")
-
-    if sample_entry is not None:
-        print("[*] Sample entry:")
-        if sample_entry.service == "http":
-            print(
-                f"    ip={sample_entry.ip} | "
-                f"service={sample_entry.service} | "
-                f"status={sample_entry.status} | "
-                f"path={sample_entry.path}"
-            )
-        else:
-            print(
-                f"    ip={sample_entry.ip} | "
-                f"service={sample_entry.service} | "
-                f"timestamp={sample_entry.timestamp}"
-            )
+            apache_lines
