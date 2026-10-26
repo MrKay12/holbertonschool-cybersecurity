@@ -24,6 +24,13 @@ IP_PATTERN = re.compile(
     r'(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])'
 )
 
+SQLI_SIGNATURES = [
+    re.compile(r"\bunion\s+select\b", re.IGNORECASE),
+    re.compile(r"""'\s*or\s+['"]?\d+['"]?\s*=\s*['"]?\d+""",
+               re.IGNORECASE),
+    re.compile(r"--"),
+]
+
 GEOIP_DB = {
     "1.2.3.4": "US",
     "5.6.7.8": "RU",
@@ -66,6 +73,7 @@ class LogEntry:
         self.country = "UNKNOWN"
         self.is_bot = False
         self.alert_level = "LOW"
+        self.attack_type = None
 
 
 def read_stream(file_path: str):
@@ -183,6 +191,20 @@ def check_threat_intel(log_entry):
     return log_entry
 
 
+def detect_sqli(log_entry):
+    """Detect SQL injection patterns in a log entry."""
+    path = str(getattr(log_entry, "path", "") or "")
+    message = str(getattr(log_entry, "message", "") or "")
+    text = f"{path} {message}"
+
+    for signature in SQLI_SIGNATURES:
+        if signature.search(text):
+            log_entry.attack_type = "SQLi"
+            return log_entry
+
+    return log_entry
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Path to the log file")
@@ -244,6 +266,7 @@ if __name__ == "__main__":
     known_ips = 0
     bots_detected = 0
     high_alerts = 0
+    sqli_attempts = 0
 
     for entry in entries:
         enrich_ip(entry)
@@ -258,6 +281,10 @@ if __name__ == "__main__":
         if entry.alert_level == "HIGH":
             high_alerts += 1
 
+        detect_sqli(entry)
+        if entry.attack_type == "SQLi":
+            sqli_attempts += 1
+
     print("--- Enrichment ---")
     print(
         f"[*] GeoIP: {len(entries)} entries enriched "
@@ -270,3 +297,7 @@ if __name__ == "__main__":
         f"[*] HIGH alerts: {high_alerts} entries "
         "from blacklisted IPs"
     )
+
+    print("--- Attack Detection ---")
+    print(f"[*] SQLi attempts: {sqli_attempts}")
+    print("[*] XSS attempts:  0")
