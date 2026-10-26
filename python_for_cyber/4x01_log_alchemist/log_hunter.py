@@ -24,6 +24,11 @@ IP_PATTERN = re.compile(
     r'(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])'
 )
 
+GEOIP_DB = {
+    "1.2.3.4": "US",
+    "5.6.7.8": "RU",
+}
+
 
 class LogEntry:
     """Represent a normalized log entry."""
@@ -50,6 +55,7 @@ class LogEntry:
         self.path = path
         self.status = status
         self.user_agent = user_agent
+        self.country = "UNKNOWN"
 
 
 def read_stream(file_path: str):
@@ -85,7 +91,6 @@ def normalize_entry(parsed_dict, log_type, raw_line="") -> LogEntry:
         method = parsed_dict["method"]
         path = parsed_dict["path"]
         user_agent = parsed_dict.get("user_agent") or ""
-
         message = f"{method} {path} {status}"
 
         return LogEntry(
@@ -117,10 +122,16 @@ def normalize_entry(parsed_dict, log_type, raw_line="") -> LogEntry:
 
 
 def filter_logs(stream, status_codes=[404, 500]):
-    """Yield entries whose status matches one of the requested codes."""
+    """Yield entries whose status matches the requested codes."""
     for entry in stream:
         if getattr(entry, "status", None) in status_codes:
             yield entry
+
+
+def enrich_ip(log_entry):
+    """Add GeoIP country information to a log entry."""
+    log_entry.country = GEOIP_DB.get(log_entry.ip, "UNKNOWN")
+    return log_entry
 
 
 if __name__ == "__main__":
@@ -140,4 +151,55 @@ if __name__ == "__main__":
         parsed = parse_apache_line(line)
 
         if parsed is not None:
-            apache_lines
+            apache_lines += 1
+            entry = normalize_entry(parsed, "apache", line)
+        else:
+            parsed = parse_syslog_line(line)
+
+            if parsed is not None:
+                syslog_lines += 1
+                entry = normalize_entry(parsed, "syslog", line)
+            else:
+                continue
+
+        entries.append(entry)
+
+        if sample_entry is None:
+            sample_entry = entry
+
+    print("--- Parsing ---")
+    print(f"[*] Apache lines:  {apache_lines}")
+    print(f"[*] Syslog lines:  {syslog_lines}")
+    print(f"[*] Total parsed:  {apache_lines + syslog_lines}")
+
+    if sample_entry is not None:
+        print("[*] Sample entry:")
+        if sample_entry.service == "http":
+            print(
+                f"    ip={sample_entry.ip} | "
+                f"service={sample_entry.service} | "
+                f"status={sample_entry.status} | "
+                f"path={sample_entry.path}"
+            )
+        else:
+            print(
+                f"    ip={sample_entry.ip} | "
+                f"service={sample_entry.service} | "
+                f"timestamp={sample_entry.timestamp}"
+            )
+
+    suspicious = sum(1 for _ in filter_logs(entries))
+    print("--- Filtering ---")
+    print(f"[*] Suspicious (404, 500): {suspicious}")
+
+    known_ips = 0
+    for entry in entries:
+        enrich_ip(entry)
+        if entry.country != "UNKNOWN":
+            known_ips += 1
+
+    print("--- Enrichment ---")
+    print(
+        f"[*] GeoIP: {len(entries)} entries enriched "
+        f"({known_ips} known IPs)"
+    )
