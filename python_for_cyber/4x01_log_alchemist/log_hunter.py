@@ -26,10 +26,8 @@ def read_stream(file_path: str):
 def parse_apache_line(line: str) -> dict:
     """Parse an Apache access log line."""
     match = re.search(APACHE_PATTERN, line)
-
     if match is None:
         return None
-
     return match.groupdict()
 
 
