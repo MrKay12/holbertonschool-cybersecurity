@@ -1,4 +1,3 @@
-```python
 #!/usr/bin/env python3
 """LogHunter - Log Analysis Engine."""
 
@@ -215,8 +214,8 @@ def detect_sqli(log_entry):
 
 
 def detect_xss(log_entry):
-    """Detect cross-site scripting patterns in the request path."""
-    if getattr(log_entry, "attack_type", None) == "SQLi":
+    """Detect XSS patterns without overwriting an existing attack type."""
+    if getattr(log_entry, "attack_type", None) is not None:
         return log_entry
 
     path = str(getattr(log_entry, "path", "") or "")
@@ -235,4 +234,98 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("[*] LogHunter - Log Analysis Engine")
-    print(f"[*] Reading:
+    print(f"[*] Reading: {args.file}")
+
+    apache_lines = 0
+    syslog_lines = 0
+    entries = []
+    sample_entry = None
+
+    for line in read_stream(args.file):
+        parsed = parse_apache_line(line)
+
+        if parsed is not None:
+            apache_lines += 1
+            entry = normalize_entry(parsed, "apache", line)
+        else:
+            parsed = parse_syslog_line(line)
+
+            if parsed is not None:
+                syslog_lines += 1
+                entry = normalize_entry(parsed, "syslog", line)
+            else:
+                continue
+
+        entries.append(entry)
+
+        if sample_entry is None:
+            sample_entry = entry
+
+    print("--- Parsing ---")
+    print(f"[*] Apache lines:  {apache_lines}")
+    print(f"[*] Syslog lines:  {syslog_lines}")
+    print(f"[*] Total parsed:  {apache_lines + syslog_lines}")
+
+    if sample_entry is not None:
+        print("[*] Sample entry:")
+        if sample_entry.service == "http":
+            print(
+                f"    ip={sample_entry.ip} | "
+                f"service={sample_entry.service} | "
+                f"status={sample_entry.status} | "
+                f"path={sample_entry.path}"
+            )
+        else:
+            print(
+                f"    ip={sample_entry.ip} | "
+                f"service={sample_entry.service} | "
+                f"timestamp={sample_entry.timestamp}"
+            )
+
+    suspicious = sum(1 for _ in filter_logs(entries))
+    print("--- Filtering ---")
+    print(f"[*] Suspicious (404, 500): {suspicious}")
+
+    known_ips = 0
+    bots_detected = 0
+    high_alerts = 0
+    sqli_attempts = 0
+    xss_attempts = 0
+
+    for entry in entries:
+        enrich_ip(entry)
+        if entry.country != "UNKNOWN":
+            known_ips += 1
+
+        analyze_user_agent(entry)
+        if entry.is_bot:
+            bots_detected += 1
+
+        check_threat_intel(entry)
+        if entry.alert_level == "HIGH":
+            high_alerts += 1
+
+        detect_sqli(entry)
+        detect_xss(entry)
+
+        if entry.attack_type == "SQLi":
+            sqli_attempts += 1
+        elif entry.attack_type == "XSS":
+            xss_attempts += 1
+
+    print("--- Enrichment ---")
+    print(
+        f"[*] GeoIP: {len(entries)} entries enriched "
+        f"({known_ips} known IPs)"
+    )
+    print(f"[*] Bots detected: {bots_detected}")
+
+    print("--- Threat Intelligence ---")
+    print(
+        f"[*] HIGH alerts: {high_alerts} entries "
+        "from blacklisted IPs"
+    )
+
+    print("--- Attack Detection ---")
+    print(f"[*] SQLi attempts: {sqli_attempts}")
+    print(f"[*] XSS attempts:  {xss_attempts}")
