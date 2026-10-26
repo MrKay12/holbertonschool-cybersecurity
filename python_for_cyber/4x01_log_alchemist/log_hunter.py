@@ -52,4 +52,3 @@ if __name__ == "__main__":
     print(f"[*] Apache lines:  {apache_lines}")
     print(f"[*] Syslog lines:  {syslog_lines}")
     print(f"[*] Total parsed:  {apache_lines + syslog_lines}")
-    
