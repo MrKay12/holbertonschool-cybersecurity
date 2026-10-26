@@ -37,6 +37,7 @@ XSS_SIGNATURES = [
     re.compile(r"<\s*script\b", re.IGNORECASE),
     re.compile(r"javascript\s*:", re.IGNORECASE),
     re.compile(r"\bonload\s*=", re.IGNORECASE),
+    re.compile(r"\bonerror\s*=", re.IGNORECASE),
 ]
 
 GEOIP_DB = {
