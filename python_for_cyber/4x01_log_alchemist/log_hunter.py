@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import multiprocessing
 import re
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
@@ -382,6 +383,70 @@ def correlate_events(entries):
             states[ip].clear()
 
 
+def process_chunk(lines):
+    """Parse, normalize, enrich, and detect threats in a chunk."""
+    results = []
+
+    for line in lines:
+        entry = normalize_entry(line)
+        if entry is None:
+            continue
+
+        enrich_ip(entry)
+        analyze_user_agent(entry)
+        check_threat_intel(entry)
+        detect_sqli(entry)
+        detect_xss(entry)
+
+        results.append(entry)
+
+    return results
+
+
+def parallel_analyze(file_path, num_workers, chunk_size):
+    """Analyze a log file in parallel using worker processes."""
+    if num_workers < 1:
+        raise ValueError("num_workers must be greater than zero.")
+
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be greater than zero.")
+
+    results = []
+
+    def read_chunks():
+        """Yield bounded batches of log lines."""
+        chunk = []
+
+        for line in read_stream(file_path):
+            chunk.append(line)
+
+            if len(chunk) >= chunk_size:
+                yield chunk
+                chunk = []
+
+        if chunk:
+            yield chunk
+
+    with multiprocessing.Pool(processes=num_workers) as pool:
+        chunk_iterator = read_chunks()
+        while True:
+            batch = []
+
+            for _ in range(num_workers * 2):
+                try:
+                    batch.append(next(chunk_iterator))
+                except StopIteration:
+                    break
+
+            if not batch:
+                break
+
+            for chunk_results in pool.map(process_chunk, batch):
+                results.extend(chunk_results)
+
+    return results
+
+
 def export_report(alerts, filename, format="json"):
     """Export alert dictionaries or LogEntry objects to a file."""
     if format.lower() != "json":
@@ -423,21 +488,44 @@ def main():
         "--report",
         help="Export detected alerts to a JSON report",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="Number of worker processes (0 means sequential)",
+    )
     args = parser.parse_args()
 
-    entries = []
+    if args.workers < 0:
+        parser.error("--workers must be zero or greater")
 
-    for line in read_stream(args.file):
-        entry = normalize_entry(line)
-        if entry is not None:
+    print("[*] LogHunter - Log Analysis Engine")
+
+    if args.workers > 0:
+        print(
+            f"[*] Reading: {args.file} "
+            f"(parallel: {args.workers} workers)"
+        )
+        entries = parallel_analyze(
+            args.file,
+            args.workers,
+            chunk_size=1000,
+        )
+    else:
+        print(f"[*] Reading: {args.file} (sequential)")
+        entries = []
+
+        for line in read_stream(args.file):
+            entry = normalize_entry(line)
+            if entry is None:
+                continue
+
+            enrich_ip(entry)
+            analyze_user_agent(entry)
+            check_threat_intel(entry)
             entries.append(entry)
 
     print(f"[*] Parsed entries: {len(entries)}")
-
-    for entry in entries:
-        enrich_ip(entry)
-        analyze_user_agent(entry)
-        check_threat_intel(entry)
 
     alerts = []
 
