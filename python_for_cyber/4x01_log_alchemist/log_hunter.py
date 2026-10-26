@@ -1,4 +1,3 @@
-```python
 #!/usr/bin/env python3
 """LogHunter - Log Analysis Engine."""
 
@@ -247,4 +246,4 @@ if __name__ == "__main__":
         f"({known_ips} known IPs)"
     )
     print(f"[*] Bots detected: {bots_detected}")
-```
+    
