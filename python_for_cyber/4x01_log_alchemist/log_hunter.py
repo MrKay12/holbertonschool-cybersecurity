@@ -3,6 +3,7 @@
 
 import argparse
 import re
+from collections import Counter
 
 
 APACHE_PATTERN = re.compile(
@@ -229,6 +230,30 @@ def detect_xss(log_entry):
     return log_entry
 
 
+def detect_bruteforce(entries):
+    """Yield brute-force alerts for IPs with more than five failures."""
+    failures = Counter()
+
+    for entry in entries:
+        ip = getattr(entry, "ip", "")
+        if not ip:
+            continue
+
+        status = getattr(entry, "status", None)
+        message = str(getattr(entry, "message", "") or "")
+
+        if status == 401 or "Failed password" in message:
+            failures[ip] += 1
+
+    for ip, count in failures.items():
+        if count > 5:
+            yield {
+                "ip": ip,
+                "count": count,
+                "alert_type": "BRUTE_FORCE",
+            }
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Path to the log file")
@@ -330,3 +355,18 @@ if __name__ == "__main__":
     print("--- Attack Detection ---")
     print(f"[*] SQLi attempts: {sqli_attempts}")
     print(f"[*] XSS attempts:  {xss_attempts}")
+
+    brute_force_alerts = sorted(
+        detect_bruteforce(entries),
+        key=lambda alert: alert["count"],
+        reverse=True,
+    )
+
+    print("--- Brute Force ---")
+    print(f"[*] BRUTE_FORCE alerts: {len(brute_force_alerts)}")
+
+    for alert in brute_force_alerts:
+        print(
+            f"    {alert['ip']}: "
+            f"{alert['count']} failures"
+        )
