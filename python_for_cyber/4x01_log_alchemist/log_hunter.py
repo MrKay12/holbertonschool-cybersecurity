@@ -29,6 +29,8 @@ GEOIP_DB = {
     "5.6.7.8": "RU",
 }
 
+BOT_SIGNATURES = ("sqlmap", "nikto", "curl", "python")
+
 
 class LogEntry:
     """Represent a normalized log entry."""
@@ -56,6 +58,7 @@ class LogEntry:
         self.status = status
         self.user_agent = user_agent
         self.country = "UNKNOWN"
+        self.is_bot = False
 
 
 def read_stream(file_path: str):
@@ -134,6 +137,26 @@ def enrich_ip(log_entry):
     return log_entry
 
 
+def analyze_user_agent(log_entry):
+    """Detect bots and tools using known signatures."""
+    fields = (
+        log_entry.user_agent,
+        log_entry.message,
+        log_entry.raw_line,
+    )
+
+    combined_text = " ".join(
+        str(field or "") for field in fields
+    ).casefold()
+
+    log_entry.is_bot = any(
+        signature in combined_text
+        for signature in BOT_SIGNATURES
+    )
+
+    return log_entry
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Path to the log file")
@@ -193,13 +216,20 @@ if __name__ == "__main__":
     print(f"[*] Suspicious (404, 500): {suspicious}")
 
     known_ips = 0
+    bots_detected = 0
+
     for entry in entries:
         enrich_ip(entry)
         if entry.country != "UNKNOWN":
             known_ips += 1
+
+        analyze_user_agent(entry)
+        if entry.is_bot:
+            bots_detected += 1
 
     print("--- Enrichment ---")
     print(
         f"[*] GeoIP: {len(entries)} entries enriched "
         f"({known_ips} known IPs)"
     )
+    print(f"[*] Bots detected: {bots_detected}")
