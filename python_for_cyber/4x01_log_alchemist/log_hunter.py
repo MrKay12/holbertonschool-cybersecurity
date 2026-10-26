@@ -31,6 +31,8 @@ GEOIP_DB = {
 
 BOT_SIGNATURES = ("sqlmap", "nikto", "curl", "python")
 
+BLACKLIST = {"10.0.0.1", "192.168.1.66"}
+
 
 class LogEntry:
     """Represent a normalized log entry."""
@@ -63,6 +65,7 @@ class LogEntry:
         self.source = source
         self.country = "UNKNOWN"
         self.is_bot = False
+        self.alert_level = "LOW"
 
 
 def read_stream(file_path: str):
@@ -77,7 +80,7 @@ def read_stream(file_path: str):
 
 def parse_apache_line(line: str) -> dict:
     """Parse an Apache access log line."""
-    match = re.search(APACHE_PATTERN, line)
+    match = APACHE_PATTERN.search(line)
     if match is None:
         return None
     return match.groupdict()
@@ -85,7 +88,7 @@ def parse_apache_line(line: str) -> dict:
 
 def parse_syslog_line(line: str) -> dict:
     """Parse a Syslog line."""
-    match = re.search(SYSLOG_PATTERN, line)
+    match = SYSLOG_PATTERN.search(line)
     if match is None:
         return None
     return match.groupdict()
@@ -170,6 +173,16 @@ def analyze_user_agent(log_entry):
     return log_entry
 
 
+def check_threat_intel(log_entry):
+    """Check whether an IP address is on the threat blacklist."""
+    if log_entry.ip in BLACKLIST:
+        log_entry.alert_level = "HIGH"
+    else:
+        log_entry.alert_level = "LOW"
+
+    return log_entry
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Path to the log file")
@@ -230,6 +243,7 @@ if __name__ == "__main__":
 
     known_ips = 0
     bots_detected = 0
+    high_alerts = 0
 
     for entry in entries:
         enrich_ip(entry)
@@ -240,9 +254,19 @@ if __name__ == "__main__":
         if entry.is_bot:
             bots_detected += 1
 
+        check_threat_intel(entry)
+        if entry.alert_level == "HIGH":
+            high_alerts += 1
+
     print("--- Enrichment ---")
     print(
         f"[*] GeoIP: {len(entries)} entries enriched "
         f"({known_ips} known IPs)"
     )
     print(f"[*] Bots detected: {bots_detected}")
+
+    print("--- Threat Intelligence ---")
+    print(
+        f"[*] HIGH alerts: {high_alerts} entries "
+        "from blacklisted IPs"
+    )
