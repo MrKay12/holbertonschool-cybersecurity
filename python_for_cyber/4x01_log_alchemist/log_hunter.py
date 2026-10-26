@@ -1,3 +1,4 @@
+```python
 #!/usr/bin/env python3
 """LogHunter - Log Analysis Engine."""
 
@@ -47,6 +48,7 @@ class LogEntry:
         status=None,
         size=None,
         user_agent="",
+        source=None,
     ):
         """Initialize a normalized log entry."""
         self.ip = ip
@@ -59,6 +61,7 @@ class LogEntry:
         self.status = status
         self.size = size
         self.user_agent = user_agent
+        self.source = source
         self.country = "UNKNOWN"
         self.is_bot = False
 
@@ -115,6 +118,7 @@ def normalize_entry(parsed_dict, log_type, raw_line="") -> LogEntry:
             status=status,
             size=size,
             user_agent=user_agent,
+            source="apache",
         )
 
     if log_type == "syslog":
@@ -128,6 +132,7 @@ def normalize_entry(parsed_dict, log_type, raw_line="") -> LogEntry:
             service="ssh",
             message=message,
             raw_line=raw_line,
+            source="syslog",
         )
 
     raise ValueError(f"Unsupported log type: {log_type}")
@@ -149,9 +154,9 @@ def enrich_ip(log_entry):
 def analyze_user_agent(log_entry):
     """Detect bots and tools using known signatures."""
     fields = (
-        log_entry.user_agent,
-        log_entry.message,
-        log_entry.raw_line,
+        getattr(log_entry, "user_agent", ""),
+        getattr(log_entry, "message", ""),
+        getattr(log_entry, "raw_line", ""),
     )
 
     combined_text = " ".join(
@@ -242,3 +247,4 @@ if __name__ == "__main__":
         f"({known_ips} known IPs)"
     )
     print(f"[*] Bots detected: {bots_detected}")
+```
