@@ -3,7 +3,7 @@
 
 import argparse
 import re
-from collections import Counter, deque
+from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 
@@ -11,45 +11,55 @@ APACHE_PATTERN = re.compile(
     r'(?P<ip>\S+) \S+ \S+ '
     r'\[(?P<date>[^\]]+)\] '
     r'"(?P<method>\S+) (?P<path>\S+) [^"]+" '
-    r'(?P<status>\d{3}) (?P<size>\d+|-)'
-    r'(?: "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)")?'
+    r'(?P<status>\d{3}) (?P<size>\S+)'
+    r'(?: "(?P<referer>[^"]*)"'
+    r' "(?P<user_agent>[^"]*)")?'
 )
 
 SYSLOG_PATTERN = re.compile(
-    r'(?P<date>[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}) '
-    r'(?P<host>\S+) '
-    r'(?P<process>[\w./-]+(?:\[\d+\])?): '
-    r'(?P<message>.*)'
+    r'^(?P<date>[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}) '
+    r'(?P<host>\S+) (?P<service>[\w./-]+)'
+    r'(?:\[(?P<pid>\d+)\])?: (?P<message>.*)$'
 )
 
 IP_PATTERN = re.compile(
-    r'(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])'
+    r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
 )
 
 SQLI_SIGNATURES = [
-    re.compile(r"\bunion\s+select\b", re.IGNORECASE),
-    re.compile(
-        r"""'\s*or\s+['"]?\d+['"]?\s*=\s*['"]?\d+""",
-        re.IGNORECASE,
-    ),
-    re.compile(r"--"),
-]
+    re.compile(r"union\s+select", re.IGNORECASE),
+    re.compile(r"'\s*or\s+'?1'?\s*=\s*'?1", re.IGNORECASE),
+    re.compile(r"\bor\s+1\s*=\s*1", re.IGNORECASE),
+    re.compile(r"\bselect\b.+\bfrom\b", re.IGNORECASE),
+    re.compile(r"\bdrop\s+table\b", re.IGNORECASE),
+    re.compile(r"\binformation_schema\b", re.IGNORECASE),
+    re.compile(r"\bsleep\s*\(", re.IGNORECASE),
+    re.compile(r"\bbenchmark\s*\(", re.IGNORECASE),
+    re.compile(r"%27\s*or", re.IGNORECASE),
+)
 
 XSS_SIGNATURES = [
-    re.compile(r"<\s*script\b", re.IGNORECASE),
+    re.compile(r"<\s*script", re.IGNORECASE),
     re.compile(r"javascript\s*:", re.IGNORECASE),
-    re.compile(r"\bonload\s*=", re.IGNORECASE),
-    re.compile(r"\bonerror\s*=", re.IGNORECASE),
+    re.compile(r"onload\s*=", re.IGNORECASE),
+    re.compile(r"onerror\s*=", re.IGNORECASE),
 ]
 
-GEOIP_DB = {
-    "1.2.3.4": "US",
-    "5.6.7.8": "RU",
-}
+GEOIP_DB = {}
 
-BOT_SIGNATURES = ("sqlmap", "nikto", "curl", "python")
+BOT_SIGNATURES = [
+    "bot",
+    "crawler",
+    "spider",
+    "nikto",
+    "sqlmap",
+    "nmap",
+    "masscan",
+    "curl",
+    "wget",
+]
 
-BLACKLIST = {"10.0.0.1", "192.168.1.66"}
+BLACKLIST = set()
 
 
 class LogEntry:
@@ -57,19 +67,23 @@ class LogEntry:
 
     def __init__(
         self,
-        ip="",
-        timestamp="",
-        service="",
+        ip=None,
+        timestamp=None,
+        service=None,
         message="",
         raw_line="",
         method=None,
         path=None,
         status=None,
         size=None,
-        user_agent="",
+        user_agent=None,
         source=None,
+        country=None,
+        is_bot=False,
+        alert_level="INFO",
+        attack_type=None,
     ):
-        """Initialize a normalized log entry."""
+        """Initialize a log entry."""
         self.ip = ip
         self.timestamp = timestamp
         self.service = service
@@ -81,175 +95,192 @@ class LogEntry:
         self.size = size
         self.user_agent = user_agent
         self.source = source
-        self.country = "UNKNOWN"
-        self.is_bot = False
-        self.alert_level = "LOW"
-        self.attack_type = None
+        self.country = country
+        self.is_bot = is_bot
+        self.alert_level = alert_level
+        self.attack_type = attack_type
 
 
-def read_stream(file_path: str):
-    """Yield one line at a time from a file."""
+def read_stream(file_path):
+    """Yield lines from a log file."""
     try:
-        with open(file_path, "r", encoding="utf-8") as file:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as file:
             for line in file:
-                yield line
+                yield line.rstrip("\n")
     except FileNotFoundError:
         print(f"[ERROR] File not found: {file_path}")
+    except PermissionError:
+        print(f"[ERROR] Permission denied: {file_path}")
 
 
-def parse_apache_line(line: str) -> dict:
+def parse_apache_line(line):
     """Parse an Apache access log line."""
     match = APACHE_PATTERN.search(line)
-    if match is None:
+    if not match:
         return None
-    return match.groupdict()
+
+    data = match.groupdict()
+    return {
+        "ip": data["ip"],
+        "date": data["date"],
+        "method": data["method"],
+        "path": data["path"],
+        "status": data["status"],
+        "size": data["size"],
+        "user_agent": data.get("user_agent") or "",
+    }
 
 
-def parse_syslog_line(line: str) -> dict:
+def parse_syslog_line(line):
     """Parse a Syslog line."""
     match = SYSLOG_PATTERN.search(line)
-    if match is None:
+    if not match:
         return None
-    return match.groupdict()
+
+    data = match.groupdict()
+    ip_match = IP_PATTERN.search(data["message"])
+
+    return {
+        "ip": ip_match.group(0) if ip_match else None,
+        "date": data["date"],
+        "service": data["service"],
+        "message": data["message"],
+        "host": data["host"],
+    }
 
 
-def normalize_entry(parsed_dict, log_type, raw_line="") -> LogEntry:
-    """Normalize parsed Apache or Syslog data into a LogEntry."""
-    if log_type == "apache":
-        status = int(parsed_dict["status"])
-        method = parsed_dict["method"]
-        path = parsed_dict["path"]
-        size_value = parsed_dict.get("size")
-        size = (
-            int(size_value)
-            if size_value is not None and size_value.isdigit()
-            else None
-        )
-        user_agent = parsed_dict.get("user_agent") or ""
-        message = f"{method} {path} {status}"
+def normalize_entry(line):
+    """Parse a raw log line into a LogEntry object."""
+    apache_data = parse_apache_line(line)
 
+    if apache_data:
         return LogEntry(
-            ip=parsed_dict["ip"],
-            timestamp=parsed_dict["date"],
-            service="http",
-            message=message,
-            raw_line=raw_line,
-            method=method,
-            path=path,
-            status=status,
-            size=size,
-            user_agent=user_agent,
+            ip=apache_data["ip"],
+            timestamp=apache_data["date"],
+            service="apache",
+            message=line,
+            raw_line=line,
+            method=apache_data["method"],
+            path=apache_data["path"],
+            status=apache_data["status"],
+            size=apache_data["size"],
+            user_agent=apache_data["user_agent"],
             source="apache",
         )
 
-    if log_type == "syslog":
-        message = parsed_dict["message"]
-        ip_match = IP_PATTERN.search(message)
-        ip = ip_match.group(0) if ip_match else ""
+    syslog_data = parse_syslog_line(line)
 
+    if syslog_data:
         return LogEntry(
-            ip=ip,
-            timestamp=parsed_dict["date"],
-            service="ssh",
-            message=message,
-            raw_line=raw_line,
+            ip=syslog_data["ip"],
+            timestamp=syslog_data["date"],
+            service=syslog_data["service"],
+            message=syslog_data["message"],
+            raw_line=line,
             source="syslog",
         )
 
-    raise ValueError(f"Unsupported log type: {log_type}")
+    return None
 
 
-def filter_logs(stream, status_codes=[404, 500]):
-    """Yield entries whose status matches the requested codes."""
-    for entry in stream:
-        if getattr(entry, "status", None) in status_codes:
-            yield entry
+def filter_logs(entries, ip=None, status=None, service=None):
+    """Filter entries by IP, status, or service."""
+    for entry in entries:
+        if ip and entry.ip != ip:
+            continue
+
+        if status is not None:
+            if str(entry.status) != str(status):
+                continue
+
+        if service and entry.service != service:
+            continue
+
+        yield entry
 
 
-def enrich_ip(log_entry):
-    """Add GeoIP country information to a log entry."""
-    log_entry.country = GEOIP_DB.get(log_entry.ip, "UNKNOWN")
-    return log_entry
+def enrich_ip(entry):
+    """Add GeoIP information when a record exists."""
+    if entry.ip and entry.ip in GEOIP_DB:
+        entry.country = GEOIP_DB[entry.ip]
+
+    return entry
 
 
-def analyze_user_agent(log_entry):
-    """Detect bots and tools using known signatures."""
-    fields = (
-        getattr(log_entry, "user_agent", ""),
-        getattr(log_entry, "message", ""),
-        getattr(log_entry, "raw_line", ""),
-    )
+def analyze_user_agent(entry):
+    """Identify entries that appear to come from automated tools."""
+    user_agent = (entry.user_agent or "").lower()
+    message = (entry.message or "").lower()
 
-    combined_text = " ".join(
-        str(field or "") for field in fields
-    ).lower()
+    for signature in BOT_SIGNATURES:
+        if signature in user_agent or signature in message:
+            entry.is_bot = True
+            break
 
-    log_entry.is_bot = any(
-        signature in combined_text
-        for signature in BOT_SIGNATURES
-    )
-
-    return log_entry
+    return entry
 
 
-def check_threat_intel(log_entry):
-    """Check whether an IP address is on the threat blacklist."""
-    if log_entry.ip in BLACKLIST:
-        log_entry.alert_level = "HIGH"
-    else:
-        log_entry.alert_level = "LOW"
+def check_threat_intel(entry):
+    """Check whether the entry IP appears on the local blacklist."""
+    if entry.ip and entry.ip in BLACKLIST:
+        entry.alert_level = "CRITICAL"
 
-    return log_entry
+    return entry
 
 
 def detect_sqli(log_entry):
     """Detect SQL injection patterns in a log entry."""
+    if getattr(log_entry, "attack_type", None) is not None:
+        return log_entry
+
     path = str(getattr(log_entry, "path", "") or "")
     message = str(getattr(log_entry, "message", "") or "")
-    text = f"{path} {message}"
+    content = f"{path} {message}"
 
     for signature in SQLI_SIGNATURES:
-        if signature.search(text):
+        if signature.search(content):
             log_entry.attack_type = "SQLi"
+            log_entry.alert_level = "CRITICAL"
             break
 
     return log_entry
 
 
 def detect_xss(log_entry):
-    """Detect XSS patterns without overwriting an existing attack type."""
+    """Detect cross-site scripting patterns in a log entry."""
     if getattr(log_entry, "attack_type", None) is not None:
         return log_entry
 
     path = str(getattr(log_entry, "path", "") or "")
+    message = str(getattr(log_entry, "message", "") or "")
+    content = f"{path} {message}"
 
     for signature in XSS_SIGNATURES:
-        if signature.search(path):
+        if signature.search(content):
             log_entry.attack_type = "XSS"
+            log_entry.alert_level = "CRITICAL"
             break
 
     return log_entry
 
 
 def detect_bruteforce(entries):
-    """Yield brute-force alerts for IPs with more than five failures."""
+    """Yield alerts for IP addresses with repeated failed logins."""
     failures = Counter()
 
     for entry in entries:
-        ip = getattr(entry, "ip", "")
-        if not ip:
-            continue
-
         status = getattr(entry, "status", None)
         message = str(getattr(entry, "message", "") or "")
 
         try:
-            status = int(status) if status is not None else None
+            failed_status = int(status) == 401
         except (TypeError, ValueError):
-            status = None
+            failed_status = False
 
-        if status == 401 or "Failed password" in message:
-            failures[ip] += 1
+        failed_ssh = "Failed password" in message
+
+        if (failed_status or failed_ssh) and entry.ip:
+            failures[entry.ip] += 1
 
     for ip, count in failures.items():
         if count > 5:
@@ -261,7 +292,7 @@ def detect_bruteforce(entries):
 
 
 def parse_timestamp(timestamp):
-    """Parse Apache or Syslog timestamps into UTC-naive datetimes."""
+    """Parse Apache and Syslog timestamps."""
     if not timestamp:
         return None
 
@@ -278,32 +309,27 @@ def parse_timestamp(timestamp):
 
     try:
         parsed = datetime.strptime(timestamp, "%b %d %H:%M:%S")
-        parsed = parsed.replace(year=datetime.now().year)
-        return parsed
+        return parsed.replace(year=datetime.now().year)
     except ValueError:
         return None
 
 
 def detect_burst(entries, window_seconds=60, threshold=10):
-    """Yield alerts when an IP reaches the
-        request threshold in a time window."""
-    windows = {}
+    """Yield alerts when an IP reaches a request threshold."""
+    windows = defaultdict(deque)
     alerted_ips = set()
     window_duration = timedelta(seconds=window_seconds)
 
     for entry in entries:
-        ip = getattr(entry, "ip", "")
+        ip = getattr(entry, "ip", None)
         if not ip:
             continue
 
         timestamp = parse_timestamp(
-            getattr(entry, "timestamp", "")
+            getattr(entry, "timestamp", None)
         )
         if timestamp is None:
             continue
-
-        if ip not in windows:
-            windows[ip] = deque()
 
         ip_window = windows[ip]
         ip_window.append(timestamp)
@@ -314,10 +340,7 @@ def detect_burst(entries, window_seconds=60, threshold=10):
         ):
             ip_window.popleft()
 
-        if (
-            len(ip_window) >= threshold
-            and ip not in alerted_ips
-        ):
+        if len(ip_window) >= threshold and ip not in alerted_ips:
             alerted_ips.add(ip)
             yield {
                 "ip": ip,
@@ -327,115 +350,79 @@ def detect_burst(entries, window_seconds=60, threshold=10):
             }
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+def correlate_events(entries):
+    """Correlate scanner and SQLi events for each IP."""
+    states = defaultdict(set)
+
+    for entry in entries:
+        ip = getattr(entry, "ip", None)
+        if not ip:
+            continue
+
+        status = getattr(entry, "status", None)
+        attack_type = getattr(entry, "attack_type", None)
+
+        if str(status) == "404":
+            states[ip].add("scanner")
+
+        if attack_type == "SQLi":
+            states[ip].add("sqli")
+
+        if {"scanner", "sqli"}.issubset(states[ip]):
+            yield {
+                "ip": ip,
+                "stages": ["scanner", "sqli"],
+                "alert_type": "CRITICAL INCIDENT",
+            }
+            states[ip].clear()
+
+
+def main():
+    """Run the LogHunter analysis pipeline."""
+    parser = argparse.ArgumentParser(
+        description="Analyze Apache and Syslog files."
+    )
     parser.add_argument("file", help="Path to the log file")
     args = parser.parse_args()
 
-    print("[*] LogHunter - Log Analysis Engine")
-    print(f"[*] Reading: {args.file}")
-
-    apache_lines = 0
-    syslog_lines = 0
     entries = []
-    sample_entry = None
 
     for line in read_stream(args.file):
-        parsed = parse_apache_line(line)
+        entry = normalize_entry(line)
+        if entry is not None:
+            entries.append(entry)
 
-        if parsed is not None:
-            apache_lines += 1
-            entry = normalize_entry(parsed, "apache", line)
-        else:
-            parsed = parse_syslog_line(line)
-
-            if parsed is not None:
-                syslog_lines += 1
-                entry = normalize_entry(parsed, "syslog", line)
-            else:
-                continue
-
-        entries.append(entry)
-
-        if sample_entry is None:
-            sample_entry = entry
-
-    print("--- Parsing ---")
-    print(f"[*] Apache lines:  {apache_lines}")
-    print(f"[*] Syslog lines:  {syslog_lines}")
-    print(f"[*] Total parsed:  {apache_lines + syslog_lines}")
-
-    if sample_entry is not None:
-        print("[*] Sample entry:")
-        if sample_entry.service == "http":
-            print(
-                f"    ip={sample_entry.ip} | "
-                f"service={sample_entry.service} | "
-                f"status={sample_entry.status} | "
-                f"path={sample_entry.path}"
-            )
-        else:
-            print(
-                f"    ip={sample_entry.ip} | "
-                f"service={sample_entry.service} | "
-                f"timestamp={sample_entry.timestamp}"
-            )
-
-    suspicious = sum(1 for _ in filter_logs(entries))
-    print("--- Filtering ---")
-    print(f"[*] Suspicious (404, 500): {suspicious}")
-
-    known_ips = 0
-    bots_detected = 0
-    high_alerts = 0
-    sqli_attempts = 0
-    xss_attempts = 0
+    print(f"[*] Parsed entries: {len(entries)}")
 
     for entry in entries:
         enrich_ip(entry)
-        if entry.country != "UNKNOWN":
-            known_ips += 1
-
         analyze_user_agent(entry)
-        if entry.is_bot:
-            bots_detected += 1
-
         check_threat_intel(entry)
-        if entry.alert_level == "HIGH":
-            high_alerts += 1
 
+    print("\n--- SQLi Detection ---")
+    sqli_count = 0
+
+    for entry in entries:
         detect_sqli(entry)
-        detect_xss(entry)
-
         if entry.attack_type == "SQLi":
-            sqli_attempts += 1
-        elif entry.attack_type == "XSS":
-            xss_attempts += 1
+            sqli_count += 1
+            print(f"    {entry.ip}: SQLi detected")
 
-    print("--- Enrichment ---")
-    print(
-        f"[*] GeoIP: {len(entries)} entries enriched "
-        f"({known_ips} known IPs)"
-    )
-    print(f"[*] Bots detected: {bots_detected}")
+    print(f"[*] SQLi entries: {sqli_count}")
 
-    print("--- Threat Intelligence ---")
-    print(
-        f"[*] HIGH alerts: {high_alerts} entries "
-        "from blacklisted IPs"
-    )
+    print("\n--- XSS Detection ---")
+    xss_count = 0
 
-    print("--- Attack Detection ---")
-    print(f"[*] SQLi attempts: {sqli_attempts}")
-    print(f"[*] XSS attempts:  {xss_attempts}")
+    for entry in entries:
+        detect_xss(entry)
+        if entry.attack_type == "XSS":
+            xss_count += 1
+            print(f"    {entry.ip}: XSS detected")
 
-    brute_force_alerts = sorted(
-        detect_bruteforce(entries),
-        key=lambda alert: alert["count"],
-        reverse=True,
-    )
+    print(f"[*] XSS entries: {xss_count}")
 
-    print("--- Brute Force ---")
+    print("\n--- Brute Force ---")
+    brute_force_alerts = list(detect_bruteforce(entries))
     print(f"[*] BRUTE_FORCE alerts: {len(brute_force_alerts)}")
 
     for alert in brute_force_alerts:
@@ -444,9 +431,8 @@ if __name__ == "__main__":
             f"{alert['count']} failures"
         )
 
+    print("\n--- Burst Detection ---")
     burst_alerts = list(detect_burst(entries))
-
-    print("--- Burst Detection ---")
     print(f"[*] BURST alerts: {len(burst_alerts)}")
 
     for alert in burst_alerts:
@@ -455,3 +441,20 @@ if __name__ == "__main__":
             f"{alert['count']} requests in "
             f"{alert['window']}s window"
         )
+
+    print("\n--- Correlation ---")
+
+    # SQLi detection must run before event correlation.
+    for entry in entries:
+        detect_sqli(entry)
+
+    incidents = list(correlate_events(entries))
+    print("[*] CRITICAL INCIDENTS:")
+
+    for incident in incidents:
+        stages = " -> ".join(incident["stages"])
+        print(f"    {incident['ip']}: {stages}")
+
+
+if __name__ == "__main__":
+    main()
