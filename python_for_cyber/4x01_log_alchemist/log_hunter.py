@@ -3,7 +3,8 @@
 
 import argparse
 import re
-from collections import Counter
+from collections import Counter, deque
+from datetime import datetime, timedelta, timezone
 
 
 APACHE_PATTERN = re.compile(
@@ -259,6 +260,73 @@ def detect_bruteforce(entries):
             }
 
 
+def parse_timestamp(timestamp):
+    """Parse Apache or Syslog timestamps into UTC-naive datetimes."""
+    if not timestamp:
+        return None
+
+    timestamp = str(timestamp).strip()
+
+    try:
+        parsed = datetime.strptime(
+            timestamp,
+            "%d/%b/%Y:%H:%M:%S %z",
+        )
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError:
+        pass
+
+    try:
+        parsed = datetime.strptime(timestamp, "%b %d %H:%M:%S")
+        parsed = parsed.replace(year=datetime.now().year)
+        return parsed
+    except ValueError:
+        return None
+
+
+def detect_burst(entries, window_seconds=60, threshold=10):
+    """Yield alerts when an IP reaches the
+        request threshold in a time window."""
+    windows = {}
+    alerted_ips = set()
+    window_duration = timedelta(seconds=window_seconds)
+
+    for entry in entries:
+        ip = getattr(entry, "ip", "")
+        if not ip:
+            continue
+
+        timestamp = parse_timestamp(
+            getattr(entry, "timestamp", "")
+        )
+        if timestamp is None:
+            continue
+
+        if ip not in windows:
+            windows[ip] = deque()
+
+        ip_window = windows[ip]
+        ip_window.append(timestamp)
+
+        while (
+            ip_window
+            and timestamp - ip_window[0] > window_duration
+        ):
+            ip_window.popleft()
+
+        if (
+            len(ip_window) >= threshold
+            and ip not in alerted_ips
+        ):
+            alerted_ips.add(ip)
+            yield {
+                "ip": ip,
+                "count": len(ip_window),
+                "window": window_seconds,
+                "alert_type": "BURST",
+            }
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Path to the log file")
@@ -374,4 +442,16 @@ if __name__ == "__main__":
         print(
             f"    {alert['ip']}: "
             f"{alert['count']} failures"
+        )
+
+    burst_alerts = list(detect_burst(entries))
+
+    print("--- Burst Detection ---")
+    print(f"[*] BURST alerts: {len(burst_alerts)}")
+
+    for alert in burst_alerts:
+        print(
+            f"    {alert['ip']}: "
+            f"{alert['count']} requests in "
+            f"{alert['window']}s window"
         )
