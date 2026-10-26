@@ -12,6 +12,13 @@ APACHE_PATTERN = re.compile(
     r'(?P<status>\d{3}) (?P<size>\d+|-)'
 )
 
+SYSLOG_PATTERN = re.compile(
+    r'(?P<date>[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}) '
+    r'(?P<host>\S+) '
+    r'(?P<process>[\w./-]+(?:\[\d+\])?): '
+    r'(?P<message>.*)'
+)
+
 
 def read_stream(file_path: str):
     """Yield one line at a time from a file."""
@@ -31,6 +38,14 @@ def parse_apache_line(line: str) -> dict:
     return match.groupdict()
 
 
+def parse_syslog_line(line: str) -> dict:
+    """Parse a Syslog line."""
+    match = re.search(SYSLOG_PATTERN, line)
+    if match is None:
+        return None
+    return match.groupdict()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("file", help="Path to the log file")
@@ -45,6 +60,8 @@ if __name__ == "__main__":
     for line in read_stream(args.file):
         if parse_apache_line(line) is not None:
             apache_lines += 1
+        elif parse_syslog_line(line) is not None:
+            syslog_lines += 1
 
     print("--- Parsing ---")
     print(f"[*] Apache lines:  {apache_lines}")
