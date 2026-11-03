@@ -11,7 +11,10 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None
 
 API_BASE_URL = "http://localhost:5000"
 REQUEST_TIMEOUT = 5
@@ -26,6 +29,9 @@ def query_api(service: str, ip: str) -> dict:
            ip (str) - IP address or domain to look up.
     Output: dict - JSON payload from the API, or an empty dict on error.
     """
+    if requests is None:
+        print("[ERROR] The 'requests' library is not installed.")
+        return {}
     url = f"{API_BASE_URL}/{service}/{ip}"
     try:
         response = requests.get(url, timeout=REQUEST_TIMEOUT)
@@ -121,16 +127,20 @@ class TargetDossier:
         nmap_ports (list): open ports found by Nmap.
     """
 
-    def __init__(self, ip: str) -> None:
-        """Create an empty dossier for a target.
+    def __init__(self, ip: str, vt_data: dict = None,
+                 abuse_data: dict = None, nmap_ports: list = None) -> None:
+        """Create a dossier for a target, optionally pre-filled.
 
         Input: ip (str) - IP address or domain of the target.
+               vt_data (dict) - VirusTotal data (default: empty dict).
+               abuse_data (dict) - AbuseIPDB data (default: empty dict).
+               nmap_ports (list) - open ports (default: empty list).
         Output: None.
         """
         self.ip = ip
-        self.vt_data = {}
-        self.abuse_data = {}
-        self.nmap_ports = []
+        self.vt_data = vt_data if vt_data is not None else {}
+        self.abuse_data = abuse_data if abuse_data is not None else {}
+        self.nmap_ports = nmap_ports if nmap_ports is not None else []
 
     def summary(self) -> str:
         """Build a human-readable summary of the dossier.
