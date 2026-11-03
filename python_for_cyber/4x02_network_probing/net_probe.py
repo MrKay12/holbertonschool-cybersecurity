@@ -7,8 +7,10 @@ import random
 import socket as skt
 import time
 
+INTERFACE = None
 
-def check_port(ip: str, port: int, local_ip: str = None) -> bool:
+
+def check_port(ip: str, port: int) -> bool:
     """Checks the availability of a target
 
     Args:
@@ -18,13 +20,13 @@ def check_port(ip: str, port: int, local_ip: str = None) -> bool:
     Returns:
         True if port is open else False
     """
+    s = None
     try:
         s = skt.socket(skt.AF_INET, skt.SOCK_STREAM)
         s.settimeout(1)
 
-        if local_ip is not None:
-            s.bind((local_ip, 0))
-            print("[INFO] Scanning from source:", local_ip)
+        if INTERFACE is not None:
+            s.bind((INTERFACE, 0))
         s.connect((ip, port))
 
         return True
@@ -65,8 +67,11 @@ def get_banner(ip: str, port: int) -> str:
     Returns:
         Banner if succesfully handled else Unknown
     """
+    s = None
     try:
         s = skt.socket(skt.AF_INET, skt.SOCK_STREAM)
+        if INTERFACE is not None:
+            s.bind((INTERFACE, 0))
         s.connect((ip, port))
 
         if port == 80:
@@ -159,8 +164,7 @@ def scan_ports(ip: str,
                start_port: int,
                end_port: int,
                delay: float,
-               shuffle: bool = False,
-               interface: bool = False) -> list:
+               shuffle: bool = False) -> list:
     """Scan a range of ports
 
     Args:
@@ -171,7 +175,6 @@ def scan_ports(ip: str,
     Returns:
         Open ports report with banner grabbing
     """
-    # print(f"Scanning {ip} from {start_port} to {end_port}...")
     ports_report = []
 
     with crtf.ThreadPoolExecutor(max_workers=50) as executor:
@@ -190,7 +193,6 @@ def scan_ports(ip: str,
             except Exception as e:
                 print(f"Error occured!\n{e}")
 
-    # print_infos(ip, ports_report)
     return ports_report
 
 
@@ -232,14 +234,10 @@ def guess_service(ip: str, port: int) -> str:
         3306: "MySQL"
     }
 
-    # banner = get_banner(ip, port)
-    # if banner == "Unknown":
     if port in COMMON_PORTS.keys():
         return f"{COMMON_PORTS.get(port)}"
     else:
         return "No Service Guessed"
-
-    # return ""
 
 
 def check_vulnerability(banner: str) -> str:
@@ -330,6 +328,8 @@ def scan_udp(ip: str, port: int):
 
 def main() -> None:
     """Program Entry Point"""
+    global INTERFACE
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--target",
                         help="Target IP",
@@ -363,9 +363,7 @@ def main() -> None:
         shuffle_set = False
 
     if args.interface:
-        interface = args.interface
-    else:
-        interface = None
+        INTERFACE = args.interface
 
     ports = scan_ports(ip,
                        lower_port,
