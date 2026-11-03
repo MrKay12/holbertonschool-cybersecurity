@@ -179,22 +179,26 @@ def build_dossier(ip: str) -> TargetDossier:
     return dossier
 
 
-def main() -> None:
+def main(argv: list = None) -> TargetDossier:
     """Parse the CLI argument, build the dossier and print its summary.
 
-    Input: target IP or domain from the command line.
-    Output: None (prints the summary to stdout).
+    Input: argv (list) - CLI arguments (default: sys.argv[1:]),
+           a single IP string is also accepted.
+    Output: TargetDossier - the filled dossier (summary printed to stdout).
     """
+    if isinstance(argv, str):
+        argv = [argv]
     parser = argparse.ArgumentParser(
         description="IntelBroker - automated IP reconnaissance tool.")
     parser.add_argument("ip", help="target IP address or domain")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         dossier = build_dossier(args.ip)
     except KeyboardInterrupt:
         print("\n[INFO] Scan interrupted by user.")
         sys.exit(1)
     print(dossier.summary())
+    return dossier
 
 
 if __name__ == "__main__":
