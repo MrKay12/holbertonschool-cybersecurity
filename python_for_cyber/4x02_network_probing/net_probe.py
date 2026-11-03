@@ -23,6 +23,14 @@ COMMON_PORTS = {
     5432: "PostgreSQL",
     8080: "HTTP-Alt",
 }
+VULNERABLE_SIGNATURES = [
+    "vsftpd 2.3.4",
+    "apache 2.2.8",
+    "apache/2.2.8",
+    "openssh_7.2p1",
+    "proftpd 1.3.3c",
+    "unrealircd 3.2.8.1",
+]
 
 
 def check_port(ip: str, port: int) -> bool:
@@ -113,18 +121,37 @@ def get_service_info(ip: str, port: int) -> str:
     return f"{service} (Guessed)"
 
 
+def check_vulnerability(banner: str) -> str:
+    """Flag a banner that matches a known vulnerable version.
+
+    Args:
+        banner: The service banner to check.
+
+    Returns:
+        "[VULNERABLE]" if a known bad signature is found, "" otherwise.
+    """
+    banner_lower = banner.lower()
+    for signature in VULNERABLE_SIGNATURES:
+        if signature in banner_lower:
+            return "[VULNERABLE]"
+    return ""
+
+
 def scan_one_port(ip: str, port: int):
-    """Scan a single port and identify its service if it is open.
+    """Scan a single port, identify its service and check it.
 
     Args:
         ip: Target IP address or hostname.
         port: TCP port to scan.
 
     Returns:
-        A dict {'port': port, 'service': info} if open, None otherwise.
+        A dict {'port': port, 'service': info, 'status': status}
+        if open, None otherwise.
     """
     if check_port(ip, port):
-        return {'port': port, 'service': get_service_info(ip, port)}
+        service = get_service_info(ip, port)
+        status = check_vulnerability(service)
+        return {'port': port, 'service': service, 'status': status}
     return None
 
 
@@ -137,8 +164,8 @@ def scan_ports(ip: str, start_port: int, end_port: int) -> list:
         end_port: Last port to scan (included).
 
     Returns:
-        A list of dicts like {'port': 22, 'service': 'SSH-2.0-OpenSSH'},
-        sorted by port number.
+        A list of dicts like {'port': 21, 'service': 'vsftpd 2.3.4',
+        'status': '[VULNERABLE]'}, sorted by port number.
     """
     print(f"Scanning {ip} from {start_port} to {end_port}...")
     open_ports = []
@@ -148,7 +175,10 @@ def scan_ports(ip: str, start_port: int, end_port: int) -> list:
         for future in as_completed(futures):
             result = future.result()
             if result:
-                print(f"[+] Port {result['port']} Open: {result['service']}")
+                line = f"[+] Port {result['port']} Open: {result['service']}"
+                if result['status']:
+                    line += f" {result['status']}"
+                print(line)
                 open_ports.append(result)
     return sorted(open_ports, key=lambda entry: entry['port'])
 
@@ -156,7 +186,10 @@ def scan_ports(ip: str, start_port: int, end_port: int) -> list:
 def main():
     """Entry point of NetProbe."""
     print(f"NetProbe v{VERSION} initialized...")
-    print(get_service_info("192.168.1.1", 80))
+    start = time.perf_counter()
+    scan_ports("scanme.nmap.org", 1, 1024)
+    elapsed = time.perf_counter() - start
+    print(f"Scan completed in {elapsed:.2f} seconds")
 
 
 if __name__ == "__main__":
