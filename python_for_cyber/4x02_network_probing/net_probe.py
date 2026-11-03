@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 VERSION = "1.0"
 MAX_THREADS = 50
+DELAY = 0
 COMMON_PORTS = {
     21: "FTP",
     22: "SSH",
@@ -38,6 +39,9 @@ VULNERABLE_SIGNATURES = [
 def check_port(ip: str, port: int) -> bool:
     """Check if a TCP port is open on a target.
 
+    If the global DELAY is set, sleep for DELAY seconds before the
+    connection attempt to slow the scan down.
+
     Args:
         ip: Target IP address or hostname.
         port: TCP port to test.
@@ -45,6 +49,9 @@ def check_port(ip: str, port: int) -> bool:
     Returns:
         True if the TCP handshake succeeds, False otherwise.
     """
+    if DELAY > 0:
+        print(f"[DEBUG] Sleeping {DELAY}s before next packet...")
+        time.sleep(DELAY)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(1)
         try:
@@ -139,21 +146,17 @@ def check_vulnerability(banner: str) -> str:
     return ""
 
 
-def scan_one_port(ip: str, port: int, delay: float = 0):
+def scan_one_port(ip: str, port: int):
     """Scan a single port, identify its service and check it.
 
     Args:
         ip: Target IP address or hostname.
         port: TCP port to scan.
-        delay: Seconds to sleep before the scan attempt (0 = no delay).
 
     Returns:
         A dict with the keys port, state, service and vulnerability
         if the port is open, None otherwise.
     """
-    if delay > 0:
-        print(f"[DEBUG] Sleeping {delay}s before next packet...")
-        time.sleep(delay)
     if check_port(ip, port):
         service = get_service_info(ip, port)
         vulnerable = check_vulnerability(service) != ""
@@ -166,15 +169,13 @@ def scan_one_port(ip: str, port: int, delay: float = 0):
     return None
 
 
-def scan_ports(ip: str, start_port: int, end_port: int,
-               delay: float = 0) -> list:
+def scan_ports(ip: str, start_port: int, end_port: int) -> list:
     """Scan a range of TCP ports with a thread pool and identify services.
 
     Args:
         ip: Target IP address or hostname.
         start_port: First port to scan (included).
         end_port: Last port to scan (included).
-        delay: Seconds to sleep before each scan attempt (0 = no delay).
 
     Returns:
         A list of dicts like {'port': 21, 'state': 'open',
@@ -184,7 +185,7 @@ def scan_ports(ip: str, start_port: int, end_port: int,
     print(f"Scanning {ip} from {start_port} to {end_port}...")
     open_ports = []
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        futures = [executor.submit(scan_one_port, ip, port, delay)
+        futures = [executor.submit(scan_one_port, ip, port)
                    for port in range(start_port, end_port + 1)]
         for future in as_completed(futures):
             result = future.result()
@@ -281,13 +282,15 @@ def parse_args():
 
 def main():
     """Entry point of NetProbe."""
+    global DELAY
     args = parse_args()
+    DELAY = args.delay
     print(f"NetProbe v{VERSION} initialized...")
     if not args.target:
         return
     start_port, end_port = args.ports
     start = time.perf_counter()
-    results = scan_ports(args.target, start_port, end_port, args.delay)
+    results = scan_ports(args.target, start_port, end_port)
     elapsed = time.perf_counter() - start
     print(f"Scan completed in {elapsed:.2f} seconds")
     if args.output:
