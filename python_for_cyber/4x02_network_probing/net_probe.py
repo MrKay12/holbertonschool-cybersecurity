@@ -140,27 +140,23 @@ def check_vulnerability(banner: str) -> str:
     return ""
 
 
-def scan_one_port(ip: str, port: int, delay: float = None):
+def scan_one_port(ip: str, port: int):
     """Scan a single port, identify its service and check it.
 
-    This is the per-thread worker. It sleeps for the given delay (or
-    the global DELAY if no delay is passed) before the scan attempt,
-    which slows the scan down to evade an IDS (stealth mode).
+    This is the per-thread worker. If the global DELAY is set, it
+    sleeps DELAY seconds before the scan attempt (stealth mode).
 
     Args:
         ip: Target IP address or hostname.
         port: TCP port to scan.
-        delay: Seconds to sleep before the attempt; falls back to the
-            global DELAY when None.
 
     Returns:
         A dict with the keys port, state, service and vulnerability
         if the port is open, None otherwise.
     """
-    wait = DELAY if delay is None else delay
-    if wait and wait > 0:
-        print(f"[DEBUG] Sleeping {wait}s before next packet...")
-        time.sleep(wait)
+    if DELAY > 0:
+        print(f"[DEBUG] Sleeping {DELAY}s before next packet...")
+        time.sleep(DELAY)
     if check_port(ip, port):
         service = get_service_info(ip, port)
         vulnerable = check_vulnerability(service) != ""
@@ -173,23 +169,32 @@ def scan_one_port(ip: str, port: int, delay: float = None):
     return None
 
 
-def scan_ports(ip: str, start_port: int, end_port: int) -> list:
+def scan_ports(ip: str, start_port: int, end_port: int,
+               delay: float = None) -> list:
     """Scan a range of TCP ports with a thread pool and identify services.
+
+    When a delay is given (or the global DELAY is set), each worker
+    sleeps before its scan attempt to slow the scan down (stealth).
 
     Args:
         ip: Target IP address or hostname.
         start_port: First port to scan (included).
         end_port: Last port to scan (included).
+        delay: Optional seconds to sleep before each scan attempt.
+            When None, the global DELAY is used instead.
 
     Returns:
         A list of dicts like {'port': 21, 'state': 'open',
         'service': 'vsftpd 2.3.4', 'vulnerability': 'YES'},
         sorted by port number.
     """
+    global DELAY
+    if delay is not None:
+        DELAY = delay
     print(f"Scanning {ip} from {start_port} to {end_port}...")
     open_ports = []
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        futures = [executor.submit(scan_one_port, ip, port, DELAY)
+        futures = [executor.submit(scan_one_port, ip, port)
                    for port in range(start_port, end_port + 1)]
         for future in as_completed(futures):
             result = future.result()
