@@ -143,6 +143,9 @@ def check_vulnerability(banner: str) -> str:
 def scan_one_port(ip: str, port: int):
     """Scan a single port, identify its service and check it.
 
+    This is the per-thread worker. If the global DELAY is set, it
+    sleeps DELAY seconds before the scan attempt (stealth mode).
+
     Args:
         ip: Target IP address or hostname.
         port: TCP port to scan.
@@ -151,6 +154,9 @@ def scan_one_port(ip: str, port: int):
         A dict with the keys port, state, service and vulnerability
         if the port is open, None otherwise.
     """
+    if DELAY > 0:
+        print(f"[DEBUG] Sleeping {DELAY}s before next packet...")
+        time.sleep(DELAY)
     if check_port(ip, port):
         service = get_service_info(ip, port)
         vulnerable = check_vulnerability(service) != ""
@@ -166,9 +172,6 @@ def scan_one_port(ip: str, port: int):
 def scan_ports(ip: str, start_port: int, end_port: int) -> list:
     """Scan a range of TCP ports with a thread pool and identify services.
 
-    If the global DELAY is set, sleep DELAY seconds before each scan
-    attempt (stealth mode) to slow the scan down.
-
     Args:
         ip: Target IP address or hostname.
         start_port: First port to scan (included).
@@ -181,13 +184,9 @@ def scan_ports(ip: str, start_port: int, end_port: int) -> list:
     """
     print(f"Scanning {ip} from {start_port} to {end_port}...")
     open_ports = []
-    futures = []
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        for port in range(start_port, end_port + 1):
-            if DELAY > 0:
-                print(f"[DEBUG] Sleeping {DELAY}s before next packet...")
-                time.sleep(DELAY)
-            futures.append(executor.submit(scan_one_port, ip, port))
+        futures = [executor.submit(scan_one_port, ip, port)
+                   for port in range(start_port, end_port + 1)]
         for future in as_completed(futures):
             result = future.result()
             if result:
