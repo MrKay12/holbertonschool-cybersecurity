@@ -2,6 +2,7 @@
 """NetProbe: a simple network probing tool."""
 
 import socket
+from concurrent.futures import ThreadPoolExecutor
 
 VERSION = "1.0"
 
@@ -25,11 +26,25 @@ def check_port(ip: str, port: int) -> bool:
             return False
 
 
+def ping_sweep(subnet: str) -> list:
+    """Find live hosts in a /24 subnet by testing TCP port 80.
+
+    Args:
+        subnet: The first three octets of the network (e.g. "192.168.1").
+
+    Returns:
+        A list of IPs with port 80 open, in ascending order.
+    """
+    ips = [f"{subnet}.{host}" for host in range(1, 255)]
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        results = executor.map(lambda ip: check_port(ip, 80), ips)
+    return [ip for ip, is_open in zip(ips, results) if is_open]
+
+
 def main():
     """Entry point of NetProbe."""
     print(f"NetProbe v{VERSION} initialized...")
-    print(f"Port 80 is open: {check_port('google.com', 80)}")
-    print(f"Port 81 is open: {check_port('google.com', 81)}")
+    print(ping_sweep("192.168.1"))
 
 
 if __name__ == "__main__":
