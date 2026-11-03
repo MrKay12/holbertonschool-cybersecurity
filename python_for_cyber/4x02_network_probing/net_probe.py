@@ -364,6 +364,7 @@ def main() -> None:
 
     if args.interface:
         INTERFACE = args.interface
+        print(f"[INFO] Scanning from source: {INTERFACE}")
 
     ports = scan_ports(ip,
                        lower_port,
