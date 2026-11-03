@@ -63,10 +63,31 @@ def get_banner(ip: str, port: int) -> str:
             return "Unknown"
 
 
+def scan_ports(ip: str, start_port: int, end_port: int) -> list:
+    """Scan a range of TCP ports sequentially and grab their banners.
+
+    Args:
+        ip: Target IP address or hostname.
+        start_port: First port to scan (included).
+        end_port: Last port to scan (included).
+
+    Returns:
+        A list of dicts like {'port': 22, 'service': 'SSH-2.0-OpenSSH'}.
+    """
+    print(f"Scanning {ip} from {start_port} to {end_port}...")
+    open_ports = []
+    for port in range(start_port, end_port + 1):
+        if check_port(ip, port):
+            service = get_banner(ip, port)
+            print(f"[+] Port {port} Open: {service}")
+            open_ports.append({'port': port, 'service': service})
+    return open_ports
+
+
 def main():
     """Entry point of NetProbe."""
     print(f"NetProbe v{VERSION} initialized...")
-    print(get_banner("scanme.nmap.org", 22))
+    scan_ports("scanme.nmap.org", 20, 80)
 
 
 if __name__ == "__main__":
