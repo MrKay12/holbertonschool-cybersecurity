@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """NetProbe: a simple network probing tool."""
 
+import argparse
+import json
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -145,13 +147,18 @@ def scan_one_port(ip: str, port: int):
         port: TCP port to scan.
 
     Returns:
-        A dict {'port': port, 'service': info, 'status': status}
-        if open, None otherwise.
+        A dict with the keys port, state, service and vulnerability
+        if the port is open, None otherwise.
     """
     if check_port(ip, port):
         service = get_service_info(ip, port)
-        status = check_vulnerability(service)
-        return {'port': port, 'service': service, 'status': status}
+        vulnerable = check_vulnerability(service) != ""
+        return {
+            'port': port,
+            'state': 'open',
+            'service': service,
+            'vulnerability': 'YES' if vulnerable else 'NO',
+        }
     return None
 
 
@@ -164,8 +171,9 @@ def scan_ports(ip: str, start_port: int, end_port: int) -> list:
         end_port: Last port to scan (included).
 
     Returns:
-        A list of dicts like {'port': 21, 'service': 'vsftpd 2.3.4',
-        'status': '[VULNERABLE]'}, sorted by port number.
+        A list of dicts like {'port': 21, 'state': 'open',
+        'service': 'vsftpd 2.3.4', 'vulnerability': 'YES'},
+        sorted by port number.
     """
     print(f"Scanning {ip} from {start_port} to {end_port}...")
     open_ports = []
@@ -176,20 +184,83 @@ def scan_ports(ip: str, start_port: int, end_port: int) -> list:
             result = future.result()
             if result:
                 line = f"[+] Port {result['port']} Open: {result['service']}"
-                if result['status']:
-                    line += f" {result['status']}"
+                if result['vulnerability'] == 'YES':
+                    line += " [VULNERABLE]"
                 print(line)
                 open_ports.append(result)
     return sorted(open_ports, key=lambda entry: entry['port'])
 
 
+def save_json(results: list, filename: str) -> None:
+    """Save scan results to a JSON file.
+
+    Args:
+        results: The list of dicts returned by scan_ports.
+        filename: Path of the JSON file to write.
+    """
+    with open(filename, "w", encoding="utf-8") as file:
+        json.dump(results, file, indent=2)
+
+
+def parse_port_range(value: str) -> tuple:
+    """Parse a port range like "1-1000" or a single port like "80".
+
+    Args:
+        value: The port range given on the command line.
+
+    Returns:
+        A (start_port, end_port) tuple.
+
+    Raises:
+        argparse.ArgumentTypeError: If the range is invalid.
+    """
+    try:
+        if "-" in value:
+            start, end = (int(part) for part in value.split("-", 1))
+        else:
+            start = end = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"invalid port range '{value}' (expected e.g. 1-1000)")
+    if not 1 <= start <= end <= 65535:
+        raise argparse.ArgumentTypeError(
+            f"invalid port range '{value}' (ports must be 1-65535)")
+    return start, end
+
+
+def parse_args():
+    """Parse the command line arguments.
+
+    Returns:
+        The parsed arguments namespace.
+    """
+    parser = argparse.ArgumentParser(
+        description="NetProbe: a simple network probing tool.")
+    parser.add_argument("-t", "--target",
+                        help="target IP address or hostname")
+    parser.add_argument("-p", "--ports", type=parse_port_range,
+                        default=(1, 1024),
+                        help="port range to scan, e.g. 1-1000 "
+                             "(default: 1-1024)")
+    parser.add_argument("-o", "--output",
+                        help="save the results to this JSON file")
+    return parser.parse_args()
+
+
 def main():
     """Entry point of NetProbe."""
+    args = parse_args()
     print(f"NetProbe v{VERSION} initialized...")
+    if not args.target:
+        return
+    start_port, end_port = args.ports
     start = time.perf_counter()
-    scan_ports("scanme.nmap.org", 1, 1024)
+    results = scan_ports(args.target, start_port, end_port)
     elapsed = time.perf_counter() - start
     print(f"Scan completed in {elapsed:.2f} seconds")
+    if args.output:
+        save_json(results, args.output)
+        print(f"[*] Results saved to {args.output}")
 
 
 if __name__ == "__main__":
