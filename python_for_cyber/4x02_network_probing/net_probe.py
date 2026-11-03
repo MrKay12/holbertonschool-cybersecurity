@@ -55,11 +55,8 @@ def get_banner(ip: str, port: int) -> str:
         sock.settimeout(2)
         try:
             sock.connect((ip, port))
-            try:
-                data = sock.recv(1024)
-            except socket.timeout:
-                sock.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
-                data = sock.recv(1024)
+            sock.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
+            data = sock.recv(1024)
             banner = data.decode(errors="ignore").strip()
             return banner if banner else "Unknown"
         except OSError:
