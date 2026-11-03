@@ -2,9 +2,13 @@
 """IntelBroker: automated reconnaissance and threat-intel enrichment tool.
 
 Queries a local mock Threat Intelligence API (localhost:5000),
-runs a local Nmap scan, and returns the results to the caller.
+runs a local Nmap scan, and aggregates everything into a TargetDossier.
+
+Usage: ./intel_broker.py <IP or domain>
 """
+import argparse
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 
 import requests
@@ -107,10 +111,81 @@ def parse_nmap_xml(xml_data: str) -> list:
     return open_ports
 
 
-if __name__ == "__main__":
-    print(query_virustotal("1.2.3.4"))
-    print(query_abuseipdb("1.2.3.4"))
+class TargetDossier:
+    """Consolidated intelligence report about a single target.
+
+    Attributes:
+        ip (str): IP address or domain of the target.
+        vt_data (dict): VirusTotal reputation data.
+        abuse_data (dict): AbuseIPDB abuse data.
+        nmap_ports (list): open ports found by Nmap.
+    """
+
+    def __init__(self, ip: str) -> None:
+        """Create an empty dossier for a target.
+
+        Input: ip (str) - IP address or domain of the target.
+        Output: None.
+        """
+        self.ip = ip
+        self.vt_data = {}
+        self.abuse_data = {}
+        self.nmap_ports = []
+
+    def summary(self) -> str:
+        """Build a human-readable summary of the dossier.
+
+        Input: None.
+        Output: str - multi-line summary of all collected data.
+        """
+        vt_score = self.vt_data.get("reputation_score", "N/A")
+        vt_malicious = self.vt_data.get("malicious", "N/A")
+        abuse_score = self.abuse_data.get("abuse_confidence_score", "N/A")
+        abuse_reports = self.abuse_data.get("reports", "N/A")
+        ports = ", ".join(str(port) for port in self.nmap_ports) or "none"
+        lines = [
+            f"===== Dossier: {self.ip} =====",
+            f"[VirusTotal] Score: {vt_score}/10 | Malicious: {vt_malicious}",
+            f"[AbuseIPDB]  Confidence: {abuse_score}% | "
+            f"Reports: {abuse_reports}",
+            f"[Nmap]       Open ports: {ports}",
+        ]
+        return "\n".join(lines)
+
+
+def build_dossier(ip: str) -> TargetDossier:
+    """Run the VT, AbuseIPDB and Nmap queries sequentially.
+
+    Input: ip (str) - IP address or domain of the target.
+    Output: TargetDossier - object filled with all collected data.
+    """
+    dossier = TargetDossier(ip)
+    dossier.vt_data = query_virustotal(ip)
+    dossier.abuse_data = query_abuseipdb(ip)
     try:
-        print(parse_nmap_xml(run_nmap("127.0.0.1")))
+        dossier.nmap_ports = parse_nmap_xml(run_nmap(ip))
     except RuntimeError as error:
         print(f"[ERROR] {error}")
+    return dossier
+
+
+def main() -> None:
+    """Parse the CLI argument, build the dossier and print its summary.
+
+    Input: target IP or domain from the command line.
+    Output: None (prints the summary to stdout).
+    """
+    parser = argparse.ArgumentParser(
+        description="IntelBroker - automated IP reconnaissance tool.")
+    parser.add_argument("ip", help="target IP address or domain")
+    args = parser.parse_args()
+    try:
+        dossier = build_dossier(args.ip)
+    except KeyboardInterrupt:
+        print("\n[INFO] Scan interrupted by user.")
+        sys.exit(1)
+    print(dossier.summary())
+
+
+if __name__ == "__main__":
+    main()
