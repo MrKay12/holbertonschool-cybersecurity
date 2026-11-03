@@ -41,10 +41,35 @@ def ping_sweep(subnet: str) -> list:
     return [ip for ip, is_open in zip(ips, results) if is_open]
 
 
+def get_banner(ip: str, port: int) -> str:
+    """Grab the banner of the service running on a TCP port.
+
+    Args:
+        ip: Target IP address or hostname.
+        port: TCP port to probe.
+
+    Returns:
+        The banner without surrounding whitespace, or "Unknown".
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(2)
+        try:
+            sock.connect((ip, port))
+            try:
+                data = sock.recv(1024)
+            except socket.timeout:
+                sock.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
+                data = sock.recv(1024)
+            banner = data.decode(errors="ignore").strip()
+            return banner if banner else "Unknown"
+        except OSError:
+            return "Unknown"
+
+
 def main():
     """Entry point of NetProbe."""
     print(f"NetProbe v{VERSION} initialized...")
-    print(ping_sweep("192.168.1"))
+    print(get_banner("scanme.nmap.org", 22))
 
 
 if __name__ == "__main__":
