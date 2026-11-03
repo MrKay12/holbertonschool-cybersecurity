@@ -139,17 +139,21 @@ def check_vulnerability(banner: str) -> str:
     return ""
 
 
-def scan_one_port(ip: str, port: int):
+def scan_one_port(ip: str, port: int, delay: float = 0):
     """Scan a single port, identify its service and check it.
 
     Args:
         ip: Target IP address or hostname.
         port: TCP port to scan.
+        delay: Seconds to sleep before the scan attempt (0 = no delay).
 
     Returns:
         A dict with the keys port, state, service and vulnerability
         if the port is open, None otherwise.
     """
+    if delay > 0:
+        print(f"[DEBUG] Sleeping {delay}s before next packet...")
+        time.sleep(delay)
     if check_port(ip, port):
         service = get_service_info(ip, port)
         vulnerable = check_vulnerability(service) != ""
@@ -162,13 +166,15 @@ def scan_one_port(ip: str, port: int):
     return None
 
 
-def scan_ports(ip: str, start_port: int, end_port: int) -> list:
+def scan_ports(ip: str, start_port: int, end_port: int,
+               delay: float = 0) -> list:
     """Scan a range of TCP ports with a thread pool and identify services.
 
     Args:
         ip: Target IP address or hostname.
         start_port: First port to scan (included).
         end_port: Last port to scan (included).
+        delay: Seconds to sleep before each scan attempt (0 = no delay).
 
     Returns:
         A list of dicts like {'port': 21, 'state': 'open',
@@ -178,7 +184,7 @@ def scan_ports(ip: str, start_port: int, end_port: int) -> list:
     print(f"Scanning {ip} from {start_port} to {end_port}...")
     open_ports = []
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        futures = [executor.submit(scan_one_port, ip, port)
+        futures = [executor.submit(scan_one_port, ip, port, delay)
                    for port in range(start_port, end_port + 1)]
         for future in as_completed(futures):
             result = future.result()
@@ -228,6 +234,29 @@ def parse_port_range(value: str) -> tuple:
     return start, end
 
 
+def parse_delay(value: str) -> float:
+    """Parse the delay argument as a non-negative float.
+
+    Args:
+        value: The delay given on the command line.
+
+    Returns:
+        The delay in seconds.
+
+    Raises:
+        argparse.ArgumentTypeError: If the delay is invalid.
+    """
+    try:
+        delay = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"invalid delay '{value}' (expected a number, e.g. 0.5)")
+    if delay < 0:
+        raise argparse.ArgumentTypeError(
+            f"invalid delay '{value}' (must be positive)")
+    return delay
+
+
 def parse_args():
     """Parse the command line arguments.
 
@@ -244,6 +273,9 @@ def parse_args():
                              "(default: 1-1024)")
     parser.add_argument("-o", "--output",
                         help="save the results to this JSON file")
+    parser.add_argument("-d", "--delay", type=parse_delay, default=0,
+                        help="seconds to wait before each scan attempt "
+                             "(default: 0)")
     return parser.parse_args()
 
 
@@ -255,7 +287,7 @@ def main():
         return
     start_port, end_port = args.ports
     start = time.perf_counter()
-    results = scan_ports(args.target, start_port, end_port)
+    results = scan_ports(args.target, start_port, end_port, args.delay)
     elapsed = time.perf_counter() - start
     print(f"Scan completed in {elapsed:.2f} seconds")
     if args.output:
