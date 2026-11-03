@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """IntelBroker: automated reconnaissance and threat-intel enrichment tool.
 
-Queries a local mock Threat Intelligence API (localhost:5000)
-and returns the results as Python dictionaries.
+Queries a local mock Threat Intelligence API (localhost:5000),
+runs a local Nmap scan, and returns the results to the caller.
 """
+import subprocess
+
 import requests
 
 API_BASE_URL = "http://localhost:5000"
 REQUEST_TIMEOUT = 5
+NMAP_PORTS = "22,80"
+NMAP_TIMEOUT = 120
 
 
 def query_api(service: str, ip: str) -> dict:
@@ -55,6 +59,33 @@ def query_abuseipdb(ip: str) -> dict:
     return query_api("abuseipdb", ip)
 
 
+def run_nmap(ip: str) -> str:
+    """Run an Nmap scan on ports 22 and 80 and capture the XML output.
+
+    Input: ip (str) - IP address or domain to scan.
+    Output: str - raw Nmap XML report (stdout).
+    Raises: RuntimeError if nmap is missing, times out,
+            or exits with a non-zero return code.
+    """
+    command = ["nmap", "-p", NMAP_PORTS, ip, "-oX", "-"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True,
+                                timeout=NMAP_TIMEOUT)
+    except FileNotFoundError:
+        raise RuntimeError("nmap is not installed or not in PATH.")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"nmap scan timed out after {NMAP_TIMEOUT}s.")
+    if result.returncode != 0:
+        error_message = result.stderr.strip() or "unknown error"
+        raise RuntimeError(f"nmap failed (code {result.returncode}): "
+                           f"{error_message}")
+    return result.stdout
+
+
 if __name__ == "__main__":
     print(query_virustotal("1.2.3.4"))
     print(query_abuseipdb("1.2.3.4"))
+    try:
+        print(run_nmap("127.0.0.1"))
+    except RuntimeError as error:
+        print(f"[ERROR] {error}")
