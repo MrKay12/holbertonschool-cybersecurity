@@ -7,6 +7,22 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 VERSION = "1.0"
 MAX_THREADS = 50
+COMMON_PORTS = {
+    21: "FTP",
+    22: "SSH",
+    23: "Telnet",
+    25: "SMTP",
+    53: "DNS",
+    80: "HTTP",
+    110: "POP3",
+    143: "IMAP",
+    443: "HTTPS",
+    445: "SMB",
+    3306: "MySQL",
+    3389: "RDP",
+    5432: "PostgreSQL",
+    8080: "HTTP-Alt",
+}
 
 
 def check_port(ip: str, port: int) -> bool:
@@ -65,23 +81,55 @@ def get_banner(ip: str, port: int) -> str:
             return "Unknown"
 
 
+def guess_service(port: int) -> str:
+    """Guess the service name from a well-known port number.
+
+    Args:
+        port: TCP port number.
+
+    Returns:
+        The usual service name for this port, or "Unknown".
+    """
+    return COMMON_PORTS.get(port, "Unknown")
+
+
+def get_service_info(ip: str, port: int) -> str:
+    """Identify a service by its banner, or guess it from the port.
+
+    Args:
+        ip: Target IP address or hostname.
+        port: TCP port to identify.
+
+    Returns:
+        The banner if one is received, otherwise the guessed service
+        name followed by "(Guessed)", or "Unknown".
+    """
+    banner = get_banner(ip, port)
+    if banner and banner != "Unknown":
+        return banner
+    service = guess_service(port)
+    if service == "Unknown":
+        return "Unknown"
+    return f"{service} (Guessed)"
+
+
 def scan_one_port(ip: str, port: int):
-    """Scan a single port and grab its banner if it is open.
+    """Scan a single port and identify its service if it is open.
 
     Args:
         ip: Target IP address or hostname.
         port: TCP port to scan.
 
     Returns:
-        A dict {'port': port, 'service': banner} if open, None otherwise.
+        A dict {'port': port, 'service': info} if open, None otherwise.
     """
     if check_port(ip, port):
-        return {'port': port, 'service': get_banner(ip, port)}
+        return {'port': port, 'service': get_service_info(ip, port)}
     return None
 
 
 def scan_ports(ip: str, start_port: int, end_port: int) -> list:
-    """Scan a range of TCP ports with a thread pool and grab their banners.
+    """Scan a range of TCP ports with a thread pool and identify services.
 
     Args:
         ip: Target IP address or hostname.
@@ -108,10 +156,7 @@ def scan_ports(ip: str, start_port: int, end_port: int) -> list:
 def main():
     """Entry point of NetProbe."""
     print(f"NetProbe v{VERSION} initialized...")
-    start = time.perf_counter()
-    scan_ports("scanme.nmap.org", 1, 1024)
-    elapsed = time.perf_counter() - start
-    print(f"Scan completed in {elapsed:.2f} seconds")
+    print(get_service_info("192.168.1.1", 80))
 
 
 if __name__ == "__main__":
