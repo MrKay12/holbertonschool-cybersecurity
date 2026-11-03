@@ -39,9 +39,6 @@ VULNERABLE_SIGNATURES = [
 def check_port(ip: str, port: int) -> bool:
     """Check if a TCP port is open on a target.
 
-    If the global DELAY is set, sleep for DELAY seconds before the
-    connection attempt to slow the scan down.
-
     Args:
         ip: Target IP address or hostname.
         port: TCP port to test.
@@ -49,9 +46,6 @@ def check_port(ip: str, port: int) -> bool:
     Returns:
         True if the TCP handshake succeeds, False otherwise.
     """
-    if DELAY > 0:
-        print(f"[DEBUG] Sleeping {DELAY}s before next packet...")
-        time.sleep(DELAY)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(1)
         try:
@@ -149,6 +143,9 @@ def check_vulnerability(banner: str) -> str:
 def scan_one_port(ip: str, port: int):
     """Scan a single port, identify its service and check it.
 
+    If the global DELAY is set, sleep for DELAY seconds before the
+    scan attempt to slow the scan down (stealth mode).
+
     Args:
         ip: Target IP address or hostname.
         port: TCP port to scan.
@@ -157,6 +154,9 @@ def scan_one_port(ip: str, port: int):
         A dict with the keys port, state, service and vulnerability
         if the port is open, None otherwise.
     """
+    if DELAY > 0:
+        print(f"[DEBUG] Sleeping {DELAY}s before next packet...")
+        time.sleep(DELAY)
     if check_port(ip, port):
         service = get_service_info(ip, port)
         vulnerable = check_vulnerability(service) != ""
