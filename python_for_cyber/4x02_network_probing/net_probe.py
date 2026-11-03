@@ -1,311 +1,387 @@
 #!/usr/bin/env python3
-"""NetProbe: a simple network probing tool."""
 
 import argparse
+import concurrent.futures as crtf
 import json
-import socket
+import random
+import socket as skt
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-VERSION = "1.0"
-MAX_THREADS = 50
-DELAY = 0
-COMMON_PORTS = {
-    21: "FTP",
-    22: "SSH",
-    23: "Telnet",
-    25: "SMTP",
-    53: "DNS",
-    80: "HTTP",
-    110: "POP3",
-    143: "IMAP",
-    443: "HTTPS",
-    445: "SMB",
-    3306: "MySQL",
-    3389: "RDP",
-    5432: "PostgreSQL",
-    8080: "HTTP-Alt",
-}
-VULNERABLE_SIGNATURES = [
-    "vsftpd 2.3.4",
-    "apache 2.2.8",
-    "apache/2.2.8",
-    "openssh_7.2p1",
-    "proftpd 1.3.3c",
-    "unrealircd 3.2.8.1",
-]
 
 
-def check_port(ip: str, port: int) -> bool:
-    """Check if a TCP port is open on a target.
+def check_port(ip: str, port: int, local_ip: str = None) -> bool:
+    """Checks the availability of a target
 
     Args:
-        ip: Target IP address or hostname.
-        port: TCP port to test.
+        ip: IP Host to test (or hostname)
+        port: Target port
 
     Returns:
-        True if the TCP handshake succeeds, False otherwise.
+        True if port is open else False
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(1)
-        try:
-            sock.connect((ip, port))
-            return True
-        except (socket.timeout, ConnectionRefusedError, OSError):
-            return False
+    try:
+        s = skt.socket(skt.AF_INET, skt.SOCK_STREAM)
+        s.settimeout(1)
+
+        if local_ip is not None:
+            s.bind((local_ip, 0))
+            print("[INFO] Scanning from source:", local_ip)
+        s.connect((ip, port))
+
+        return True
+    except (OSError, TimeoutError):
+        return False
+    finally:
+        if s:
+            s.close()
 
 
-def ping_sweep(subnet: str) -> list:
-    """Find live hosts in a /24 subnet by testing TCP port 80.
+def ping_sweep(subnet: str) -> list[str]:
+    """Checks addresses with port 80 open
 
     Args:
-        subnet: The first three octets of the network (e.g. "192.168.1").
+        subnet: Network section, CIDR is supposed 24
 
     Returns:
-        A list of IPs with port 80 open, in ascending order.
+        List of success IPs test
     """
-    ips = [f"{subnet}.{host}" for host in range(1, 255)]
-    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        results = executor.map(lambda ip: check_port(ip, 80), ips)
-    return [ip for ip, is_open in zip(ips, results) if is_open]
+    list_ip = []
+
+    for e in range(1, 255):
+        address = f"{subnet}.{e}"
+        is_port_open = check_port(address, 8000)
+        if is_port_open:
+            list_ip.append(address)
+
+    return list_ip
 
 
 def get_banner(ip: str, port: int) -> str:
-    """Grab the banner of the service running on a TCP port.
+    """Extract banner from application-level protocol / service
 
     Args:
-        ip: Target IP address or hostname.
-        port: TCP port to probe.
+        ip: Target IP
+        port: Port to scan
 
     Returns:
-        The banner without surrounding whitespace, or "Unknown".
+        Banner if succesfully handled else Unknown
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(2)
-        try:
-            sock.connect((ip, port))
-            sock.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
-            data = sock.recv(1024)
-            banner = data.decode(errors="ignore").strip()
-            return banner if banner else "Unknown"
-        except OSError:
+    try:
+        s = skt.socket(skt.AF_INET, skt.SOCK_STREAM)
+        s.connect((ip, port))
+
+        if port == 80:
+            req = (
+                "GET / HTTP/1.1\r\n"
+                f"Host: {ip}\r\n"
+                "\r\n"
+            ).encode()
+            s.send(req)
+
+            data = s.recv(1024)
+            if not data:
+                return "Unknown"
+
+            banner = data.decode().strip()
+            for line in banner.split('\n'):
+                if "Server" in line.replace('\r', ''):
+                    return line.removeprefix('Server: ').removesuffix('\r')
+
             return "Unknown"
+        elif port == 22:
+            data = s.recv(1024)
+            if not data:
+                return "Unknown"
 
+            banner = data.decode().strip()
+            banner = banner.replace('\r', '')
+            return banner.split()[0]
+        elif port == 21:
+            s.send(f"ftp {ip}".encode())
+            data = s.recv(1024)
+            if not data:
+                return "Unknown"
 
-def guess_service(port: int) -> str:
-    """Guess the service name from a well-known port number.
+            banner = data.decode().strip()
+            for line in banner.split('\n'):
+                if line.startswith('220'):
+                    banner = line.removeprefix('220').removesuffix(')')
+                    banner = banner.strip().removeprefix('(').lower()
+                    return banner
 
-    Args:
-        port: TCP port number.
-
-    Returns:
-        The usual service name for this port, or "Unknown".
-    """
-    return COMMON_PORTS.get(port, "Unknown")
-
-
-def get_service_info(ip: str, port: int) -> str:
-    """Identify a service by its banner, or guess it from the port.
-
-    Args:
-        ip: Target IP address or hostname.
-        port: TCP port to identify.
-
-    Returns:
-        The banner if one is received, otherwise the guessed service
-        name followed by "(Guessed)", or "Unknown".
-    """
-    banner = get_banner(ip, port)
-    if banner and banner != "Unknown":
-        return banner
-    service = guess_service(port)
-    if service == "Unknown":
+            return "Unknown"
+        else:
+            return "Unknown"
+    except OSError:
+        print("[ERROR] Socket process problem occured")
         return "Unknown"
-    return f"{service} (Guessed)"
+    except TimeoutError:
+        print("Socket timeout reached")
+        return "Unknown"
+    finally:
+        if s:
+            s.close()
 
 
-def check_vulnerability(banner: str) -> str:
-    """Flag a banner that matches a known vulnerable version.
-
-    Args:
-        banner: The service banner to check.
-
-    Returns:
-        "[VULNERABLE]" if a known bad signature is found, "" otherwise.
-    """
-    banner_lower = banner.lower()
-    for signature in VULNERABLE_SIGNATURES:
-        if signature in banner_lower:
-            return "[VULNERABLE]"
-    return ""
-
-
-def scan_one_port(ip: str, port: int):
-    """Scan a single port, identify its service and check it.
-
-    This is the per-thread worker. If the global DELAY is set, it
-    sleeps DELAY seconds before the scan attempt (stealth mode).
+def scan_single_port(ip: str, port: int, delay: float) -> dict:
+    """Get one port state
 
     Args:
-        ip: Target IP address or hostname.
-        port: TCP port to scan.
+        ip: Target IP
+        port: Single port to scan
 
     Returns:
-        A dict with the keys port, state, service and vulnerability
-        if the port is open, None otherwise.
+        Metadata dictionary or empty one if port is not open
     """
-    if DELAY > 0:
-        print(f"[DEBUG] Sleeping {DELAY}s before next packet...")
-        time.sleep(DELAY)
-    if check_port(ip, port):
-        service = get_service_info(ip, port)
-        vulnerable = check_vulnerability(service) != ""
+    if delay > 0.0:
+        print(f"[DEBUG] {port} - Sleeping {delay} before next packet...")
+        time.sleep(delay)
+
+    is_open_port = check_port(ip, port)
+
+    if is_open_port:
+        banner = get_banner(ip, port)
+        if check_vulnerability(banner):
+            is_vulnerable_banner = 'YES'
+        else:
+            is_vulnerable_banner = 'NO'
+
         return {
             'port': port,
             'state': 'open',
-            'service': service,
-            'vulnerability': 'YES' if vulnerable else 'NO',
+            'service': banner,
+            'vulnerability': is_vulnerable_banner
         }
-    return None
+
+    return {}
 
 
-def scan_ports(ip: str, start_port: int, end_port: int,
-               delay: float = None) -> list:
-    """Scan a range of TCP ports with a thread pool and identify services.
-
-    When a delay is given (or the global DELAY is set), each worker
-    sleeps before its scan attempt to slow the scan down (stealth).
+def scan_ports(ip: str,
+               start_port: int,
+               end_port: int,
+               delay: float,
+               shuffle: bool = False,
+               interface: bool = False) -> list:
+    """Scan a range of ports
 
     Args:
-        ip: Target IP address or hostname.
-        start_port: First port to scan (included).
-        end_port: Last port to scan (included).
-        delay: Optional seconds to sleep before each scan attempt.
-            When None, the global DELAY is used instead.
+        ip: Target IP
+        start_port: Lower band port to scan
+        end_port: Lower band port to scan
 
     Returns:
-        A list of dicts like {'port': 21, 'state': 'open',
-        'service': 'vsftpd 2.3.4', 'vulnerability': 'YES'},
-        sorted by port number.
+        Open ports report with banner grabbing
     """
-    global DELAY
-    if delay is not None:
-        DELAY = delay
-    print(f"Scanning {ip} from {start_port} to {end_port}...")
-    open_ports = []
-    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        futures = [executor.submit(scan_one_port, ip, port)
-                   for port in range(start_port, end_port + 1)]
-        for future in as_completed(futures):
-            result = future.result()
-            if result:
-                line = f"[+] Port {result['port']} Open: {result['service']}"
-                if result['vulnerability'] == 'YES':
-                    line += " [VULNERABLE]"
-                print(line)
-                open_ports.append(result)
-    return sorted(open_ports, key=lambda entry: entry['port'])
+    # print(f"Scanning {ip} from {start_port} to {end_port}...")
+    ports_report = []
+
+    with crtf.ThreadPoolExecutor(max_workers=50) as executor:
+        ports_list = list(range(start_port, end_port + 1))
+        if shuffle:
+            random.shuffle(ports_list)
+
+        for port in ports_list:
+            future = executor.submit(scan_single_port,
+                                     ip, port, delay)
+
+            try:
+                data = future.result()
+                if data:
+                    ports_report.append(data)
+            except Exception as e:
+                print(f"Error occured!\n{e}")
+
+    # print_infos(ip, ports_report)
+    return ports_report
 
 
-def save_json(results: list, filename: str) -> None:
-    """Save scan results to a JSON file.
+def print_infos(ip, ports_analysis: list[dict]) -> None:
+    """Print informations after analysis
 
     Args:
-        results: The list of dicts returned by scan_ports.
-        filename: Path of the JSON file to write.
+        ip: Target IP
+        ports_analysis: extracted ports
     """
-    with open(filename, "w", encoding="utf-8") as file:
-        json.dump(results, file, indent=2)
+    if ports_analysis:
+        for port in ports_analysis:
+            if port:
+                print(
+                    f"[+] Port {port['port']}: "
+                    f"{guess_service(ip, port['port'])} "
+                    f"({port['service']})"
+                    f"{check_vulnerability(port['service'])}"
+                )
+    else:
+        print("No Port Discovered")
 
 
-def parse_port_range(value: str) -> tuple:
-    """Parse a port range like "1-1000" or a single port like "80".
+def guess_service(ip: str, port: int) -> str:
+    """If banner is Unknown, try to guess service on port
 
     Args:
-        value: The port range given on the command line.
+        ip: Target IP
+        port: Port to scan
 
     Returns:
-        A (start_port, end_port) tuple.
+        Guessed service or "No Guessed Service"
+    """
+    COMMON_PORTS = {
+        21: "FTP",
+        22: "SSH",
+        80: "HTTP",
+        443: "HTTPS",
+        3306: "MySQL"
+    }
 
-    Raises:
-        argparse.ArgumentTypeError: If the range is invalid.
+    # banner = get_banner(ip, port)
+    # if banner == "Unknown":
+    if port in COMMON_PORTS.keys():
+        return f"{COMMON_PORTS.get(port)}"
+    else:
+        return "No Service Guessed"
+
+    # return ""
+
+
+def check_vulnerability(banner: str) -> str:
+    """Checks for a potential backdoor with the banner
+
+    Args:
+        banner: The actual banner to test
+
+    Returns:
+        Banner Vulnerability Check
+    """
+    BAD_SIGNS = {
+        "vsftpd 2.3.4",
+        "vsftpd 3.0.5",
+        "Apache 2.2.8"
+    }
+
+    for sign in BAD_SIGNS:
+        if banner.lower() in sign.lower():
+            return "[VULNERABLE]"
+
+    return ""
+
+
+def ip_to_hostname(ip: str) -> str:
+    """Convert IP to domain name
+
+    Args:
+        ip: IP to convert with DNS
+
+    Returns:
+        Domain name or failed resolution state
     """
     try:
-        if "-" in value:
-            start, end = (int(part) for part in value.split("-", 1))
-        else:
-            start = end = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"invalid port range '{value}' (expected e.g. 1-1000)")
-    if not 1 <= start <= end <= 65535:
-        raise argparse.ArgumentTypeError(
-            f"invalid port range '{value}' (ports must be 1-65535)")
-    return start, end
+        return skt.gethostbyaddr(ip)
+    except skt.herror:
+        return "Resolution failed"
 
 
-def parse_delay(value: str) -> float:
-    """Parse the delay argument as a non-negative float.
+def generate_json_report(ip: str,
+                         domain: str,
+                         filename: str,
+                         ports_analytics: list[dict]) -> None:
+    """Generate human-readable report with JSON format
 
     Args:
-        value: The delay given on the command line.
+        filename: path or direct filename to write
+        ports_analytics: data to write
+    """
+    infos = f"{ip} ({domain})"
+    ports_analytics.insert(0, {'target': infos})
+    to_json_str_data = json.dumps(ports_analytics, indent=2)
+
+    with open(filename, "w") as file:
+        file.write(to_json_str_data)
+        file.write('\n')
+
+
+def scan_udp(ip: str, port: int):
+    """Checks the availability of a target
+
+    Args:
+        ip: IP Host to test (or hostname)
+        port: Target port
 
     Returns:
-        The delay in seconds.
-
-    Raises:
-        argparse.ArgumentTypeError: If the delay is invalid.
+        True if port is open else False
     """
+    s = None
     try:
-        delay = float(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"invalid delay '{value}' (expected a number, e.g. 0.5)")
-    if delay < 0:
-        raise argparse.ArgumentTypeError(
-            f"invalid delay '{value}' (must be positive)")
-    return delay
+        s = skt.socket(skt.AF_INET, skt.SOCK_DGRAM)
+        s.settimeout(3)
+
+        s.sendto(b'', (ip, port))
+        data, addr = s.recvfrom(1024)
+
+        if not data:
+            return False
+        return True
+    except skt.gaierror:
+        return False
+    except TimeoutError:
+        return False
+    finally:
+        if s is not None:
+            s.close()
 
 
-def parse_args():
-    """Parse the command line arguments.
-
-    Returns:
-        The parsed arguments namespace.
-    """
-    parser = argparse.ArgumentParser(
-        description="NetProbe: a simple network probing tool.")
+def main() -> None:
+    """Program Entry Point"""
+    parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--target",
-                        help="target IP address or hostname")
-    parser.add_argument("-p", "--ports", type=parse_port_range,
-                        default=(1, 1024),
-                        help="port range to scan, e.g. 1-1000 "
-                             "(default: 1-1024)")
+                        help="Target IP",
+                        required=True)
+    parser.add_argument("-p", "--ports",
+                        required=True,
+                        help="Port range to scan")
     parser.add_argument("-o", "--output",
-                        help="save the results to this JSON file")
-    parser.add_argument("-d", "--delay", type=parse_delay, default=0,
-                        help="seconds to wait before each scan attempt "
-                             "(default: 0)")
-    return parser.parse_args()
+                        help="Generate report to file")
+    parser.add_argument("-d", "--delay", type=float,
+                        help="Set a delay between ports analysis")
+    parser.add_argument("-r", "--random", action="store_true",
+                        help="Shuffle the list of ports")
+    parser.add_argument("-i", "--interface",
+                        help="Interface to use (for binding)")
 
+    args = parser.parse_args()
+    sep_port = args.ports.find('-')
 
-def main():
-    """Entry point of NetProbe."""
-    global DELAY
-    args = parse_args()
-    DELAY = args.delay
-    print(f"NetProbe v{VERSION} initialized...")
-    if not args.target:
-        return
-    start_port, end_port = args.ports
-    start = time.perf_counter()
-    results = scan_ports(args.target, start_port, end_port)
-    elapsed = time.perf_counter() - start
-    print(f"Scan completed in {elapsed:.2f} seconds")
+    ip = args.target
+    lower_port = int(args.ports[:sep_port])
+    upper_port = int(args.ports[sep_port + 1:])
+
+    delay = 0.0
+    if args.delay:
+        delay = float(args.delay)
+
+    if args.random:
+        shuffle_set = True
+    else:
+        shuffle_set = False
+
+    if args.interface:
+        interface = args.interface
+    else:
+        interface = None
+
+    ports = scan_ports(ip,
+                       lower_port,
+                       upper_port,
+                       delay=delay,
+                       shuffle=shuffle_set)
+
+    domain = skt.gethostbyaddr(ip)[0]
+    print(f"Target: {ip} ({domain})")
+
     if args.output:
-        save_json(results, args.output)
-        print(f"[*] Results saved to {args.output}")
+        generate_json_report(ip,
+                             domain,
+                             args.output,
+                             ports)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
