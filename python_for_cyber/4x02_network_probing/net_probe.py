@@ -373,7 +373,10 @@ def main() -> None:
                        delay=delay,
                        shuffle=shuffle_set)
 
-    domain = skt.gethostbyaddr(ip)[0]
+    try:
+        domain = skt.gethostbyaddr(ip)[0]
+    except (skt.herror, skt.gaierror, OSError):
+        domain = "Unknown"
     print(f"Target: {ip} ({domain})")
 
     if args.output:
