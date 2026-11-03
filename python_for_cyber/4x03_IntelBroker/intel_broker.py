@@ -127,11 +127,16 @@ class TargetDossier:
         nmap_ports (list): open ports found by Nmap.
     """
 
-    def __init__(self, ip: str, vt_data: dict = None,
+    ip = ""
+    vt_data = {}
+    abuse_data = {}
+    nmap_ports = []
+
+    def __init__(self, ip: str = "", vt_data: dict = None,
                  abuse_data: dict = None, nmap_ports: list = None) -> None:
         """Create a dossier for a target, optionally pre-filled.
 
-        Input: ip (str) - IP address or domain of the target.
+        Input: ip (str) - IP address or domain (default: empty string).
                vt_data (dict) - VirusTotal data (default: empty dict).
                abuse_data (dict) - AbuseIPDB data (default: empty dict).
                nmap_ports (list) - open ports (default: empty list).
