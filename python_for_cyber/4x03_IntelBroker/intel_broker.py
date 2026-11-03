@@ -5,6 +5,7 @@ Queries a local mock Threat Intelligence API (localhost:5000),
 runs a local Nmap scan, and returns the results to the caller.
 """
 import subprocess
+import xml.etree.ElementTree as ET
 
 import requests
 
@@ -82,10 +83,34 @@ def run_nmap(ip: str) -> str:
     return result.stdout
 
 
+def parse_nmap_xml(xml_data: str) -> list:
+    """Extract the open ports from an Nmap XML report.
+
+    Input: xml_data (str) - raw XML produced by `nmap -oX -`.
+    Output: list - open port numbers as integers (e.g. [22, 80]),
+            or an empty list if the XML is invalid.
+    """
+    open_ports = []
+    try:
+        root = ET.fromstring(xml_data)
+    except ET.ParseError:
+        print("[ERROR] Invalid Nmap XML output.")
+        return open_ports
+    for port in root.findall("host/ports/port"):
+        state = port.find("state")
+        if state is None or state.get("state") != "open":
+            continue
+        try:
+            open_ports.append(int(port.get("portid", "")))
+        except ValueError:
+            continue
+    return open_ports
+
+
 if __name__ == "__main__":
     print(query_virustotal("1.2.3.4"))
     print(query_abuseipdb("1.2.3.4"))
     try:
-        print(run_nmap("127.0.0.1"))
+        print(parse_nmap_xml(run_nmap("127.0.0.1")))
     except RuntimeError as error:
         print(f"[ERROR] {error}")
