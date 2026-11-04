@@ -1,26 +1,26 @@
 {
   "target": "1.2.3.4",
-  "timestamp": "2026-11-04T08:08:24.794556+00:00",
+  "timestamp": "2026-11-04T08:26:08.969835+00:00",
   "intelligence": {
     "virustotal": {
       "ip": "1.2.3.4",
-      "reputation_score": 0,
+      "reputation_score": 4,
       "malicious": false
     },
     "shodan": {
       "ip": "1.2.3.4",
       "ports": [
-        22,
-        80,
-        8080
+        443,
+        8080,
+        80
       ],
       "os": "Linux",
       "isp": "CloudNet"
     },
     "abuseipdb": {
       "ip": "1.2.3.4",
-      "abuse_confidence_score": 16,
-      "reports": 47
+      "abuse_confidence_score": 67,
+      "reports": 50
     },
     "nmap": {
       "ports": [

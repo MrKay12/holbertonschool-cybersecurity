@@ -4,7 +4,7 @@
 Queries a local mock Threat Intelligence API (localhost:5000),
 runs a local Nmap scan, and aggregates everything into a TargetDossier.
 
-Usage: ./intel_broker.py <IP or domain> [-o report.json]
+Usage: ./intel_broker.py <IP or domain> [-o report.json] [-v]
 """
 import argparse
 import asyncio
@@ -32,6 +32,20 @@ NMAP_TIMEOUT = 120
 CACHE_FILE = "cache.json"
 CACHE_TTL = 3600
 UNAVAILABLE_MESSAGE = "Unavailable"
+SERVICE_NAMES = {"virustotal": "VirusTotal",
+                 "shodan": "Shodan",
+                 "abuseipdb": "AbuseIPDB"}
+
+
+def log_status(message: str, verbose: bool) -> None:
+    """Print a status message only in verbose mode.
+
+    Input: message (str) - text to print.
+           verbose (bool) - True to print, False to stay silent.
+    Output: None.
+    """
+    if verbose:
+        print(message, flush=True)
 
 
 def unavailable() -> dict:
@@ -242,7 +256,7 @@ def query_shodan(ip: str) -> dict:
     return query_api("shodan", ip)
 
 
-async def gather_intel(ip: str) -> dict:
+async def gather_intel(ip: str, verbose: bool = False) -> dict:
     """Query VirusTotal, Shodan and AbuseIPDB in parallel (with cache).
 
     Results less than 1 hour old are read from the cache; only the
@@ -250,6 +264,7 @@ async def gather_intel(ip: str) -> dict:
     An asyncio.Semaphore limits the API calls to 5 at the same time.
 
     Input: ip (str) - IP address or domain to look up.
+           verbose (bool) - print status messages (default: False).
     Output: dict - {'virustotal': dict, 'shodan': dict, 'abuseipdb': dict};
             a source that failed is {"error": "Unavailable"}.
     """
@@ -260,8 +275,11 @@ async def gather_intel(ip: str) -> dict:
     for service in services:
         cached_data = get_cached(cache, service, ip)
         if cached_data is not None:
+            log_status(f"[+] {SERVICE_NAMES[service]} loaded from cache.",
+                       verbose)
             intel[service] = cached_data
         else:
+            log_status(f"[+] Querying {SERVICE_NAMES[service]}...", verbose)
             to_fetch.append(service)
     if not to_fetch:
         return intel
@@ -337,17 +355,21 @@ async def run_nmap_async(ip: str) -> str:
     return stdout.decode(errors="replace")
 
 
-async def scan_ports(ip: str) -> list:
+async def scan_ports(ip: str, verbose: bool = False) -> list:
     """Run the async Nmap scan and return the open ports.
 
     Input: ip (str) - IP address or domain to scan.
+           verbose (bool) - print status messages (default: False).
     Output: list - open ports (empty list if the scan failed).
     """
+    log_status(f"[+] Running Nmap on {ip}...", verbose)
     try:
-        return parse_nmap_xml(await run_nmap_async(ip))
+        xml_data = await run_nmap_async(ip)
     except RuntimeError as error:
         print(f"[ERROR] {error}")
         return []
+    log_status("[+] Nmap finished.", verbose)
+    return parse_nmap_xml(xml_data)
 
 
 def parse_nmap_xml(xml_data: str) -> list:
@@ -479,14 +501,16 @@ class TargetDossier:
         return True
 
 
-async def build_dossier_async(ip: str) -> TargetDossier:
+async def build_dossier_async(ip: str,
+                              verbose: bool = False) -> TargetDossier:
     """Run the 3 API queries AND the Nmap scan at the same time.
 
     Input: ip (str) - IP address or domain of the target.
+           verbose (bool) - print status messages (default: False).
     Output: TargetDossier - object filled with all collected data.
     """
-    intel, open_ports = await asyncio.gather(gather_intel(ip),
-                                             scan_ports(ip))
+    intel, open_ports = await asyncio.gather(gather_intel(ip, verbose),
+                                             scan_ports(ip, verbose))
     return TargetDossier(ip,
                          vt_data=intel["virustotal"],
                          abuse_data=intel["abuseipdb"],
@@ -494,21 +518,23 @@ async def build_dossier_async(ip: str) -> TargetDossier:
                          shodan_data=intel["shodan"])
 
 
-def build_dossier(ip: str) -> TargetDossier:
+def build_dossier(ip: str, verbose: bool = False) -> TargetDossier:
     """Synchronous entry point: run build_dossier_async in an event loop.
 
     Input: ip (str) - IP address or domain of the target.
+           verbose (bool) - print status messages (default: False).
     Output: TargetDossier - object filled with all collected data.
     """
-    return asyncio.run(build_dossier_async(ip))
+    return asyncio.run(build_dossier_async(ip, verbose))
 
 
 def main(argv: list = None) -> TargetDossier:
-    """Parse the CLI argument, build the dossier and print its summary.
+    """Parse the CLI arguments, build the dossier and print its summary.
 
     Input: argv (list) - CLI arguments (default: sys.argv[1:]),
            a single IP string is also accepted.
-    Output: TargetDossier - the filled dossier (summary printed to stdout).
+    Output: TargetDossier - the filled dossier (summary printed to stdout,
+            JSON report written if --output is given).
     """
     if isinstance(argv, str):
         argv = [argv]
@@ -517,15 +543,20 @@ def main(argv: list = None) -> TargetDossier:
     parser.add_argument("ip", help="target IP address or domain")
     parser.add_argument("-o", "--output",
                         help="save the full dossier to this JSON file")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="show status messages during the scan")
     args = parser.parse_args(argv)
     try:
-        dossier = build_dossier(args.ip)
+        dossier = build_dossier(args.ip, args.verbose)
     except KeyboardInterrupt:
         print("\n[INFO] Scan interrupted by user.")
         sys.exit(1)
     print(dossier.summary())
-    if args.output and dossier.save_json(args.output):
-        print(f"[INFO] Report saved to {args.output}")
+    if args.output:
+        if dossier.save_json(args.output):
+            print("[SUCCESS] Report generated.")
+    elif args.verbose:
+        print("[SUCCESS] Report generated.")
     return dossier
 
 
