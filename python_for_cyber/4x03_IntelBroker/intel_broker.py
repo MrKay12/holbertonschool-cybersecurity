@@ -3,7 +3,6 @@
 
 Queries a local mock Threat Intelligence API (localhost:5000),
 runs a local Nmap scan, and aggregates everything into a TargetDossier.
-API results are cached for 1 hour in cache.json.
 
 Usage: ./intel_broker.py <IP or domain> [-o report.json]
 """
@@ -32,6 +31,25 @@ NMAP_PORTS = "22,80"
 NMAP_TIMEOUT = 120
 CACHE_FILE = "cache.json"
 CACHE_TTL = 3600
+UNAVAILABLE_MESSAGE = "Unavailable"
+
+
+def unavailable() -> dict:
+    """Build the payload returned when an API source fails.
+
+    Input: None.
+    Output: dict - {"error": "Unavailable"} (a new dict on every call).
+    """
+    return {"error": UNAVAILABLE_MESSAGE}
+
+
+def is_valid_result(data) -> bool:
+    """Tell if an API result is real data (not empty, not an error).
+
+    Input: data - value returned by an API helper.
+    Output: bool - True if data is a non-empty dict without "error".
+    """
+    return isinstance(data, dict) and bool(data) and "error" not in data
 
 
 def load_cache(cache_path: str = None) -> dict:
@@ -101,26 +119,27 @@ def set_cached(cache: dict, service: str, ip: str, data: dict) -> None:
 async def fetch_api(session, url: str) -> dict:
     """Send an asynchronous GET request and return the JSON payload.
 
+    Any failure (HTTP 4xx/5xx, connection refused, timeout, invalid JSON)
+    is caught so the rest of the script keeps running.
+
     Input: session (aiohttp.ClientSession) - open HTTP session.
            url (str) - full URL of the API endpoint.
-    Output: dict - JSON payload from the API, or an empty dict on error.
+    Output: dict - JSON payload from the API,
+            or {"error": "Unavailable"} if the API failed.
     """
-    timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
     try:
+        if aiohttp is not None:
+            timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        else:
+            timeout = REQUEST_TIMEOUT
         async with session.get(url, timeout=timeout) as response:
             if response.status != 200:
-                print(f"[ERROR] {url} returned status {response.status}.")
-                return {}
-            return await response.json()
-    except aiohttp.ClientConnectorError:
-        print("[ERROR] Cannot connect to the API. Is mock_api.py running?")
-    except asyncio.TimeoutError:
-        print(f"[ERROR] Request to {url} timed out.")
-    except (aiohttp.ContentTypeError, ValueError):
-        print(f"[ERROR] Invalid JSON received from {url}.")
-    except aiohttp.ClientError as error:
-        print(f"[ERROR] Request failed: {error}")
-    return {}
+                return unavailable()
+            data = await response.json()
+    except Exception:
+        # ClientError, TimeoutError, invalid JSON...: never stop the script
+        return unavailable()
+    return data if isinstance(data, dict) else unavailable()
 
 
 async def fetch_api_limited(semaphore, session, url: str) -> dict:
@@ -129,7 +148,8 @@ async def fetch_api_limited(semaphore, session, url: str) -> dict:
     Input: semaphore (asyncio.Semaphore) - limits concurrent requests.
            session (aiohttp.ClientSession) - open HTTP session.
            url (str) - full URL of the API endpoint.
-    Output: dict - JSON payload from the API, or an empty dict on error.
+    Output: dict - JSON payload from the API,
+            or {"error": "Unavailable"} if the API failed.
     """
     async with semaphore:
         return await fetch_api(session, url)
@@ -140,7 +160,8 @@ async def fetch_service(service: str, ip: str) -> dict:
 
     Input: service (str) - API name (e.g. "virustotal", "abuseipdb").
            ip (str) - IP address or domain to look up.
-    Output: dict - JSON payload from the API, or an empty dict on error.
+    Output: dict - JSON payload from the API,
+            or {"error": "Unavailable"} if the API failed.
     """
     async with aiohttp.ClientSession() as session:
         return await fetch_api(session, f"{API_BASE_URL}/{service}/{ip}")
@@ -150,23 +171,17 @@ def fetch_api_sync(url: str) -> dict:
     """Fallback: send a blocking GET request with requests.
 
     Input: url (str) - full URL of the API endpoint.
-    Output: dict - JSON payload from the API, or an empty dict on error.
+    Output: dict - JSON payload from the API,
+            or {"error": "Unavailable"} if the API failed.
     """
     try:
         response = requests.get(url, timeout=REQUEST_TIMEOUT)
         if response.status_code != 200:
-            print(f"[ERROR] {url} returned status {response.status_code}.")
-            return {}
-        return response.json()
-    except requests.exceptions.ConnectionError:
-        print("[ERROR] Cannot connect to the API. Is mock_api.py running?")
-    except requests.exceptions.Timeout:
-        print(f"[ERROR] Request to {url} timed out.")
-    except ValueError:
-        print(f"[ERROR] Invalid JSON received from {url}.")
-    except requests.exceptions.RequestException as error:
-        print(f"[ERROR] Request failed: {error}")
-    return {}
+            return unavailable()
+        data = response.json()
+    except (requests.exceptions.RequestException, ValueError):
+        return unavailable()
+    return data if isinstance(data, dict) else unavailable()
 
 
 def query_api(service: str, ip: str) -> dict:
@@ -178,7 +193,8 @@ def query_api(service: str, ip: str) -> dict:
 
     Input: service (str) - API name (e.g. "virustotal", "abuseipdb").
            ip (str) - IP address or domain to look up.
-    Output: dict - JSON payload from the API, or an empty dict on error.
+    Output: dict - JSON payload from the API,
+            or {"error": "Unavailable"} if the API failed.
     """
     cache = load_cache()
     cached_data = get_cached(cache, service, ip)
@@ -189,9 +205,8 @@ def query_api(service: str, ip: str) -> dict:
     elif requests is not None:
         data = fetch_api_sync(f"{API_BASE_URL}/{service}/{ip}")
     else:
-        print("[ERROR] Neither 'aiohttp' nor 'requests' is installed.")
-        return {}
-    if data:
+        return unavailable()
+    if is_valid_result(data):
         set_cached(cache, service, ip, data)
         save_cache(cache)
     return data
@@ -201,7 +216,8 @@ def query_virustotal(ip: str) -> dict:
     """Ask the mock VirusTotal API for the reputation of an IP.
 
     Input: ip (str) - IP address or domain to look up.
-    Output: dict - {'ip', 'reputation_score', 'malicious'}, or {} on error.
+    Output: dict - {'ip', 'reputation_score', 'malicious'},
+            or {"error": "Unavailable"} if the API failed.
     """
     return query_api("virustotal", ip)
 
@@ -211,7 +227,7 @@ def query_abuseipdb(ip: str) -> dict:
 
     Input: ip (str) - IP address or domain to look up.
     Output: dict - {'ip', 'abuse_confidence_score', 'reports'},
-            or {} on error.
+            or {"error": "Unavailable"} if the API failed.
     """
     return query_api("abuseipdb", ip)
 
@@ -220,7 +236,8 @@ def query_shodan(ip: str) -> dict:
     """Ask the mock Shodan API for historical data about an IP.
 
     Input: ip (str) - IP address or domain to look up.
-    Output: dict - {'ip', 'ports', 'os', 'isp'}, or {} on error.
+    Output: dict - {'ip', 'ports', 'os', 'isp'},
+            or {"error": "Unavailable"} if the API failed.
     """
     return query_api("shodan", ip)
 
@@ -234,7 +251,7 @@ async def gather_intel(ip: str) -> dict:
 
     Input: ip (str) - IP address or domain to look up.
     Output: dict - {'virustotal': dict, 'shodan': dict, 'abuseipdb': dict};
-            a source that failed is an empty dict.
+            a source that failed is {"error": "Unavailable"}.
     """
     services = ["virustotal", "shodan", "abuseipdb"]
     cache = load_cache()
@@ -250,8 +267,8 @@ async def gather_intel(ip: str) -> dict:
         return intel
     if aiohttp is None:
         for service in to_fetch:
-            intel[service] = {}
-        return intel
+            intel[service] = unavailable()
+        return {service: intel[service] for service in services}
     semaphore = asyncio.Semaphore(5)
     async with aiohttp.ClientSession() as session:
         tasks = [fetch_api_limited(semaphore, session,
@@ -259,11 +276,10 @@ async def gather_intel(ip: str) -> dict:
                  for service in to_fetch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
     for service, result in zip(to_fetch, results):
-        if isinstance(result, Exception):
-            print(f"[ERROR] {service} query failed: {result}")
-            result = {}
+        if isinstance(result, BaseException):
+            result = unavailable()
         intel[service] = result
-        if result:
+        if is_valid_result(result):
             set_cached(cache, service, ip, result)
     save_cache(cache)
     return {service: intel[service] for service in services}
@@ -396,27 +412,37 @@ class TargetDossier:
     def summary(self) -> str:
         """Build a human-readable summary of the dossier.
 
+        A source that failed is shown as "Unavailable".
+
         Input: None.
         Output: str - multi-line summary of all collected data.
         """
-        vt_score = self.vt_data.get("reputation_score", "N/A")
-        vt_malicious = self.vt_data.get("malicious", "N/A")
-        abuse_score = self.abuse_data.get("abuse_confidence_score", "N/A")
-        abuse_reports = self.abuse_data.get("reports", "N/A")
-        shodan_os = self.shodan_data.get("os", "N/A")
-        shodan_isp = self.shodan_data.get("isp", "N/A")
-        shodan_ports = ", ".join(
-            str(port) for port in self.shodan_data.get("ports", [])) or "none"
-        ports = ", ".join(str(port) for port in self.nmap_ports) or "none"
-        lines = [
-            f"===== Dossier: {self.ip} =====",
-            f"[VirusTotal] Score: {vt_score}/10 | Malicious: {vt_malicious}",
-            f"[AbuseIPDB]  Confidence: {abuse_score}% | "
-            f"Reports: {abuse_reports}",
-            f"[Shodan]     OS: {shodan_os} | ISP: {shodan_isp} | "
-            f"Ports: {shodan_ports}",
-            f"[Nmap]       Open ports: {ports}",
-        ]
+        lines = [f"===== Dossier: {self.ip} ====="]
+        if "error" in self.vt_data:
+            lines.append(f"[VirusTotal] {UNAVAILABLE_MESSAGE}")
+        else:
+            lines.append(
+                f"[VirusTotal] Score: "
+                f"{self.vt_data.get('reputation_score', 'N/A')}/10 | "
+                f"Malicious: {self.vt_data.get('malicious', 'N/A')}")
+        if "error" in self.abuse_data:
+            lines.append(f"[AbuseIPDB]  {UNAVAILABLE_MESSAGE}")
+        else:
+            lines.append(
+                f"[AbuseIPDB]  Confidence: "
+                f"{self.abuse_data.get('abuse_confidence_score', 'N/A')}% | "
+                f"Reports: {self.abuse_data.get('reports', 'N/A')}")
+        if "error" in self.shodan_data:
+            lines.append(f"[Shodan]     {UNAVAILABLE_MESSAGE}")
+        else:
+            shodan_ports = ", ".join(
+                str(port) for port in self.shodan_data.get("ports", []))
+            lines.append(
+                f"[Shodan]     OS: {self.shodan_data.get('os', 'N/A')} | "
+                f"ISP: {self.shodan_data.get('isp', 'N/A')} | "
+                f"Ports: {shodan_ports or 'none'}")
+        ports = ", ".join(str(port) for port in self.nmap_ports)
+        lines.append(f"[Nmap]       Open ports: {ports or 'none'}")
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
@@ -478,12 +504,11 @@ def build_dossier(ip: str) -> TargetDossier:
 
 
 def main(argv: list = None) -> TargetDossier:
-    """Parse the CLI arguments, build the dossier and print its summary.
+    """Parse the CLI argument, build the dossier and print its summary.
 
     Input: argv (list) - CLI arguments (default: sys.argv[1:]),
            a single IP string is also accepted.
-    Output: TargetDossier - the filled dossier (summary printed to stdout,
-            JSON report written if --output is given).
+    Output: TargetDossier - the filled dossier (summary printed to stdout).
     """
     if isinstance(argv, str):
         argv = [argv]
