@@ -91,6 +91,39 @@ def query_abuseipdb(ip: str) -> dict:
     return query_api("abuseipdb", ip)
 
 
+def query_shodan(ip: str) -> dict:
+    """Ask the mock Shodan API for historical data about an IP.
+
+    Input: ip (str) - IP address or domain to look up.
+    Output: dict - {'ip', 'ports', 'os', 'isp'}, or {} on error.
+    """
+    return query_api("shodan", ip)
+
+
+async def gather_intel(ip: str) -> dict:
+    """Query VirusTotal, Shodan and AbuseIPDB in parallel.
+
+    Input: ip (str) - IP address or domain to look up.
+    Output: dict - {'virustotal': dict, 'shodan': dict, 'abuseipdb': dict};
+            a source that failed is an empty dict.
+    """
+    services = ["virustotal", "shodan", "abuseipdb"]
+    if aiohttp is None:
+        print("[ERROR] The 'aiohttp' library is not installed.")
+        return {service: {} for service in services}
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_api(session, f"{API_BASE_URL}/{service}/{ip}")
+                 for service in services]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    intel = {}
+    for service, result in zip(services, results):
+        if isinstance(result, Exception):
+            print(f"[ERROR] {service} query failed: {result}")
+            result = {}
+        intel[service] = result
+    return intel
+
+
 def run_nmap(ip: str) -> str:
     """Run an Nmap scan on ports 22 and 80 and capture the XML output.
 
@@ -146,27 +179,32 @@ class TargetDossier:
         vt_data (dict): VirusTotal reputation data.
         abuse_data (dict): AbuseIPDB abuse data.
         nmap_ports (list): open ports found by Nmap.
+        shodan_data (dict): Shodan historical data.
     """
 
     ip = ""
     vt_data = {}
     abuse_data = {}
     nmap_ports = []
+    shodan_data = {}
 
     def __init__(self, ip: str = "", vt_data: dict = None,
-                 abuse_data: dict = None, nmap_ports: list = None) -> None:
+                 abuse_data: dict = None, nmap_ports: list = None,
+                 shodan_data: dict = None) -> None:
         """Create a dossier for a target, optionally pre-filled.
 
         Input: ip (str) - IP address or domain (default: empty string).
                vt_data (dict) - VirusTotal data (default: empty dict).
                abuse_data (dict) - AbuseIPDB data (default: empty dict).
                nmap_ports (list) - open ports (default: empty list).
+               shodan_data (dict) - Shodan data (default: empty dict).
         Output: None.
         """
         self.ip = ip
         self.vt_data = vt_data if vt_data is not None else {}
         self.abuse_data = abuse_data if abuse_data is not None else {}
         self.nmap_ports = nmap_ports if nmap_ports is not None else []
+        self.shodan_data = shodan_data if shodan_data is not None else {}
 
     def summary(self) -> str:
         """Build a human-readable summary of the dossier.
@@ -178,26 +216,34 @@ class TargetDossier:
         vt_malicious = self.vt_data.get("malicious", "N/A")
         abuse_score = self.abuse_data.get("abuse_confidence_score", "N/A")
         abuse_reports = self.abuse_data.get("reports", "N/A")
+        shodan_os = self.shodan_data.get("os", "N/A")
+        shodan_isp = self.shodan_data.get("isp", "N/A")
+        shodan_ports = ", ".join(
+            str(port) for port in self.shodan_data.get("ports", [])) or "none"
         ports = ", ".join(str(port) for port in self.nmap_ports) or "none"
         lines = [
             f"===== Dossier: {self.ip} =====",
             f"[VirusTotal] Score: {vt_score}/10 | Malicious: {vt_malicious}",
             f"[AbuseIPDB]  Confidence: {abuse_score}% | "
             f"Reports: {abuse_reports}",
+            f"[Shodan]     OS: {shodan_os} | ISP: {shodan_isp} | "
+            f"Ports: {shodan_ports}",
             f"[Nmap]       Open ports: {ports}",
         ]
         return "\n".join(lines)
 
 
 def build_dossier(ip: str) -> TargetDossier:
-    """Run the VT, AbuseIPDB and Nmap queries sequentially.
+    """Query the 3 APIs in parallel, then run the Nmap scan.
 
     Input: ip (str) - IP address or domain of the target.
     Output: TargetDossier - object filled with all collected data.
     """
     dossier = TargetDossier(ip)
-    dossier.vt_data = query_virustotal(ip)
-    dossier.abuse_data = query_abuseipdb(ip)
+    intel = asyncio.run(gather_intel(ip))
+    dossier.vt_data = intel["virustotal"]
+    dossier.shodan_data = intel["shodan"]
+    dossier.abuse_data = intel["abuseipdb"]
     try:
         dossier.nmap_ports = parse_nmap_xml(run_nmap(ip))
     except RuntimeError as error:
