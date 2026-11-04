@@ -123,6 +123,18 @@ async def fetch_api(session, url: str) -> dict:
     return {}
 
 
+async def fetch_api_limited(semaphore, session, url: str) -> dict:
+    """Call fetch_api only when the semaphore grants a free slot.
+
+    Input: semaphore (asyncio.Semaphore) - limits concurrent requests.
+           session (aiohttp.ClientSession) - open HTTP session.
+           url (str) - full URL of the API endpoint.
+    Output: dict - JSON payload from the API, or an empty dict on error.
+    """
+    async with semaphore:
+        return await fetch_api(session, url)
+
+
 async def fetch_service(service: str, ip: str) -> dict:
     """Open a session and query one mock Threat Intel service.
 
@@ -218,6 +230,7 @@ async def gather_intel(ip: str) -> dict:
 
     Results less than 1 hour old are read from the cache; only the
     missing or expired ones are fetched, then saved to the cache.
+    An asyncio.Semaphore limits the API calls to 5 at the same time.
 
     Input: ip (str) - IP address or domain to look up.
     Output: dict - {'virustotal': dict, 'shodan': dict, 'abuseipdb': dict};
@@ -239,8 +252,10 @@ async def gather_intel(ip: str) -> dict:
         for service in to_fetch:
             intel[service] = {}
         return intel
+    semaphore = asyncio.Semaphore(5)
     async with aiohttp.ClientSession() as session:
-        tasks = [fetch_api(session, f"{API_BASE_URL}/{service}/{ip}")
+        tasks = [fetch_api_limited(semaphore, session,
+                                   f"{API_BASE_URL}/{service}/{ip}")
                  for service in to_fetch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
     for service, result in zip(to_fetch, results):
