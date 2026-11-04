@@ -3,6 +3,7 @@
 
 Queries a local mock Threat Intelligence API (localhost:5000),
 runs a local Nmap scan, and aggregates everything into a TargetDossier.
+API results are cached for 1 hour in cache.json.
 
 Usage: ./intel_broker.py <IP or domain> [-o report.json]
 """
@@ -11,6 +12,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -28,6 +30,72 @@ API_BASE_URL = "http://localhost:5000"
 REQUEST_TIMEOUT = 5
 NMAP_PORTS = "22,80"
 NMAP_TIMEOUT = 120
+CACHE_FILE = "cache.json"
+CACHE_TTL = 3600
+
+
+def load_cache(cache_path: str = None) -> dict:
+    """Load the JSON cache from disk.
+
+    Input: cache_path (str) - cache file (default: CACHE_FILE).
+    Output: dict - cache content, or an empty dict if the file is
+            missing, unreadable or corrupted.
+    """
+    try:
+        with open(cache_path or CACHE_FILE, "r", encoding="utf-8") as file:
+            cache = json.load(file)
+    except (OSError, ValueError):
+        return {}
+    return cache if isinstance(cache, dict) else {}
+
+
+def save_cache(cache: dict, cache_path: str = None) -> bool:
+    """Write the cache to disk (best effort, never raises).
+
+    Input: cache (dict) - cache content to save.
+           cache_path (str) - cache file (default: CACHE_FILE).
+    Output: bool - True if the file was written, False otherwise.
+    """
+    try:
+        with open(cache_path or CACHE_FILE, "w", encoding="utf-8") as file:
+            json.dump(cache, file, indent=2)
+            file.write("\n")
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
+def get_cached(cache: dict, service: str, ip: str) -> dict:
+    """Return cached data for a service/IP if it is less than 1 hour old.
+
+    Input: cache (dict) - loaded cache.
+           service (str) - API name (e.g. "virustotal").
+           ip (str) - IP address or domain.
+    Output: dict - cached payload, or None if missing or expired.
+    """
+    entry = cache.get(ip, {}).get(service)
+    if not isinstance(entry, dict):
+        return None
+    try:
+        age = time.time() - float(entry.get("timestamp", 0))
+    except (TypeError, ValueError):
+        return None
+    if 0 <= age < CACHE_TTL and isinstance(entry.get("data"), dict):
+        return entry["data"]
+    return None
+
+
+def set_cached(cache: dict, service: str, ip: str, data: dict) -> None:
+    """Store a fresh API result in the cache (in memory).
+
+    Input: cache (dict) - loaded cache, modified in place.
+           service (str) - API name.
+           ip (str) - IP address or domain.
+           data (dict) - payload to store.
+    Output: None.
+    """
+    cache.setdefault(ip, {})[service] = {"timestamp": time.time(),
+                                         "data": data}
 
 
 async def fetch_api(session, url: str) -> dict:
@@ -92,19 +160,29 @@ def fetch_api_sync(url: str) -> dict:
 def query_api(service: str, ip: str) -> dict:
     """Synchronous helper to query one mock Threat Intel service.
 
-    Uses aiohttp (via asyncio.run) when available,
-    otherwise falls back to requests.
+    Returns cached data if it is less than 1 hour old. Otherwise uses
+    aiohttp (via asyncio.run) when available, or falls back to requests,
+    and saves the fresh result to the cache.
 
     Input: service (str) - API name (e.g. "virustotal", "abuseipdb").
            ip (str) - IP address or domain to look up.
     Output: dict - JSON payload from the API, or an empty dict on error.
     """
+    cache = load_cache()
+    cached_data = get_cached(cache, service, ip)
+    if cached_data is not None:
+        return cached_data
     if aiohttp is not None:
-        return asyncio.run(fetch_service(service, ip))
-    if requests is not None:
-        return fetch_api_sync(f"{API_BASE_URL}/{service}/{ip}")
-    print("[ERROR] Neither 'aiohttp' nor 'requests' is installed.")
-    return {}
+        data = asyncio.run(fetch_service(service, ip))
+    elif requests is not None:
+        data = fetch_api_sync(f"{API_BASE_URL}/{service}/{ip}")
+    else:
+        print("[ERROR] Neither 'aiohttp' nor 'requests' is installed.")
+        return {}
+    if data:
+        set_cached(cache, service, ip, data)
+        save_cache(cache)
+    return data
 
 
 def query_virustotal(ip: str) -> dict:
@@ -136,26 +214,44 @@ def query_shodan(ip: str) -> dict:
 
 
 async def gather_intel(ip: str) -> dict:
-    """Query VirusTotal, Shodan and AbuseIPDB in parallel.
+    """Query VirusTotal, Shodan and AbuseIPDB in parallel (with cache).
+
+    Results less than 1 hour old are read from the cache; only the
+    missing or expired ones are fetched, then saved to the cache.
 
     Input: ip (str) - IP address or domain to look up.
     Output: dict - {'virustotal': dict, 'shodan': dict, 'abuseipdb': dict};
             a source that failed is an empty dict.
     """
     services = ["virustotal", "shodan", "abuseipdb"]
+    cache = load_cache()
+    intel = {}
+    to_fetch = []
+    for service in services:
+        cached_data = get_cached(cache, service, ip)
+        if cached_data is not None:
+            intel[service] = cached_data
+        else:
+            to_fetch.append(service)
+    if not to_fetch:
+        return intel
     if aiohttp is None:
-        return {service: {} for service in services}
+        for service in to_fetch:
+            intel[service] = {}
+        return intel
     async with aiohttp.ClientSession() as session:
         tasks = [fetch_api(session, f"{API_BASE_URL}/{service}/{ip}")
-                 for service in services]
+                 for service in to_fetch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-    intel = {}
-    for service, result in zip(services, results):
+    for service, result in zip(to_fetch, results):
         if isinstance(result, Exception):
             print(f"[ERROR] {service} query failed: {result}")
             result = {}
         intel[service] = result
-    return intel
+        if result:
+            set_cached(cache, service, ip, result)
+    save_cache(cache)
+    return {service: intel[service] for service in services}
 
 
 def run_nmap(ip: str) -> str:
