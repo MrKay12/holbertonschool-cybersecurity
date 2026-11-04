@@ -17,6 +17,11 @@ try:
 except ImportError:
     aiohttp = None
 
+try:
+    import requests
+except ImportError:
+    requests = None
+
 API_BASE_URL = "http://localhost:5000"
 REQUEST_TIMEOUT = 5
 NMAP_PORTS = "22,80"
@@ -59,17 +64,45 @@ async def fetch_service(service: str, ip: str) -> dict:
         return await fetch_api(session, f"{API_BASE_URL}/{service}/{ip}")
 
 
+def fetch_api_sync(url: str) -> dict:
+    """Fallback: send a blocking GET request with requests.
+
+    Input: url (str) - full URL of the API endpoint.
+    Output: dict - JSON payload from the API, or an empty dict on error.
+    """
+    try:
+        response = requests.get(url, timeout=REQUEST_TIMEOUT)
+        if response.status_code != 200:
+            print(f"[ERROR] {url} returned status {response.status_code}.")
+            return {}
+        return response.json()
+    except requests.exceptions.ConnectionError:
+        print("[ERROR] Cannot connect to the API. Is mock_api.py running?")
+    except requests.exceptions.Timeout:
+        print(f"[ERROR] Request to {url} timed out.")
+    except ValueError:
+        print(f"[ERROR] Invalid JSON received from {url}.")
+    except requests.exceptions.RequestException as error:
+        print(f"[ERROR] Request failed: {error}")
+    return {}
+
+
 def query_api(service: str, ip: str) -> dict:
-    """Synchronous helper: run fetch_service in a new event loop.
+    """Synchronous helper to query one mock Threat Intel service.
+
+    Uses aiohttp (via asyncio.run) when available,
+    otherwise falls back to requests.
 
     Input: service (str) - API name (e.g. "virustotal", "abuseipdb").
            ip (str) - IP address or domain to look up.
     Output: dict - JSON payload from the API, or an empty dict on error.
     """
-    if aiohttp is None:
-        print("[ERROR] The 'aiohttp' library is not installed.")
-        return {}
-    return asyncio.run(fetch_service(service, ip))
+    if aiohttp is not None:
+        return asyncio.run(fetch_service(service, ip))
+    if requests is not None:
+        return fetch_api_sync(f"{API_BASE_URL}/{service}/{ip}")
+    print("[ERROR] Neither 'aiohttp' nor 'requests' is installed.")
+    return {}
 
 
 def query_virustotal(ip: str) -> dict:
@@ -109,7 +142,6 @@ async def gather_intel(ip: str) -> dict:
     """
     services = ["virustotal", "shodan", "abuseipdb"]
     if aiohttp is None:
-        print("[ERROR] The 'aiohttp' library is not installed.")
         return {service: {} for service in services}
     async with aiohttp.ClientSession() as session:
         tasks = [fetch_api(session, f"{API_BASE_URL}/{service}/{ip}")
