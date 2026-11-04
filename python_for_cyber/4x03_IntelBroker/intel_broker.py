@@ -179,6 +179,48 @@ def run_nmap(ip: str) -> str:
     return result.stdout
 
 
+async def run_nmap_async(ip: str) -> str:
+    """Run the Nmap scan asynchronously and capture the XML output stream.
+
+    Input: ip (str) - IP address or domain to scan.
+    Output: str - raw Nmap XML report (stdout).
+    Raises: RuntimeError if nmap is missing, times out,
+            or exits with a non-zero return code.
+    """
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "nmap", "-p", NMAP_PORTS, ip, "-oX", "-",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE)
+    except FileNotFoundError:
+        raise RuntimeError("nmap is not installed or not in PATH.")
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(),
+                                                timeout=NMAP_TIMEOUT)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        raise RuntimeError(f"nmap scan timed out after {NMAP_TIMEOUT}s.")
+    if process.returncode != 0:
+        error_message = stderr.decode(errors="replace").strip()
+        raise RuntimeError(f"nmap failed (code {process.returncode}): "
+                           f"{error_message or 'unknown error'}")
+    return stdout.decode(errors="replace")
+
+
+async def scan_ports(ip: str) -> list:
+    """Run the async Nmap scan and return the open ports.
+
+    Input: ip (str) - IP address or domain to scan.
+    Output: list - open ports (empty list if the scan failed).
+    """
+    try:
+        return parse_nmap_xml(await run_nmap_async(ip))
+    except RuntimeError as error:
+        print(f"[ERROR] {error}")
+        return []
+
+
 def parse_nmap_xml(xml_data: str) -> list:
     """Extract the open ports from an Nmap XML report.
 
@@ -265,22 +307,28 @@ class TargetDossier:
         return "\n".join(lines)
 
 
-def build_dossier(ip: str) -> TargetDossier:
-    """Query the 3 APIs in parallel, then run the Nmap scan.
+async def build_dossier_async(ip: str) -> TargetDossier:
+    """Run the 3 API queries AND the Nmap scan at the same time.
 
     Input: ip (str) - IP address or domain of the target.
     Output: TargetDossier - object filled with all collected data.
     """
-    dossier = TargetDossier(ip)
-    intel = asyncio.run(gather_intel(ip))
-    dossier.vt_data = intel["virustotal"]
-    dossier.shodan_data = intel["shodan"]
-    dossier.abuse_data = intel["abuseipdb"]
-    try:
-        dossier.nmap_ports = parse_nmap_xml(run_nmap(ip))
-    except RuntimeError as error:
-        print(f"[ERROR] {error}")
-    return dossier
+    intel, open_ports = await asyncio.gather(gather_intel(ip),
+                                             scan_ports(ip))
+    return TargetDossier(ip,
+                         vt_data=intel["virustotal"],
+                         abuse_data=intel["abuseipdb"],
+                         nmap_ports=open_ports,
+                         shodan_data=intel["shodan"])
+
+
+def build_dossier(ip: str) -> TargetDossier:
+    """Synchronous entry point: run build_dossier_async in an event loop.
+
+    Input: ip (str) - IP address or domain of the target.
+    Output: TargetDossier - object filled with all collected data.
+    """
+    return asyncio.run(build_dossier_async(ip))
 
 
 def main(argv: list = None) -> TargetDossier:
