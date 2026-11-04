@@ -7,14 +7,15 @@ runs a local Nmap scan, and aggregates everything into a TargetDossier.
 Usage: ./intel_broker.py <IP or domain>
 """
 import argparse
+import asyncio
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
 try:
-    import requests
+    import aiohttp
 except ImportError:
-    requests = None
+    aiohttp = None
 
 API_BASE_URL = "http://localhost:5000"
 REQUEST_TIMEOUT = 5
@@ -22,33 +23,53 @@ NMAP_PORTS = "22,80"
 NMAP_TIMEOUT = 120
 
 
-def query_api(service: str, ip: str) -> dict:
-    """Send a GET request to a mock Threat Intel service.
+async def fetch_api(session, url: str) -> dict:
+    """Send an asynchronous GET request and return the JSON payload.
+
+    Input: session (aiohttp.ClientSession) - open HTTP session.
+           url (str) - full URL of the API endpoint.
+    Output: dict - JSON payload from the API, or an empty dict on error.
+    """
+    timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+    try:
+        async with session.get(url, timeout=timeout) as response:
+            if response.status != 200:
+                print(f"[ERROR] {url} returned status {response.status}.")
+                return {}
+            return await response.json()
+    except aiohttp.ClientConnectorError:
+        print("[ERROR] Cannot connect to the API. Is mock_api.py running?")
+    except asyncio.TimeoutError:
+        print(f"[ERROR] Request to {url} timed out.")
+    except (aiohttp.ContentTypeError, ValueError):
+        print(f"[ERROR] Invalid JSON received from {url}.")
+    except aiohttp.ClientError as error:
+        print(f"[ERROR] Request failed: {error}")
+    return {}
+
+
+async def fetch_service(service: str, ip: str) -> dict:
+    """Open a session and query one mock Threat Intel service.
 
     Input: service (str) - API name (e.g. "virustotal", "abuseipdb").
            ip (str) - IP address or domain to look up.
     Output: dict - JSON payload from the API, or an empty dict on error.
     """
-    if requests is None:
-        print("[ERROR] The 'requests' library is not installed.")
+    async with aiohttp.ClientSession() as session:
+        return await fetch_api(session, f"{API_BASE_URL}/{service}/{ip}")
+
+
+def query_api(service: str, ip: str) -> dict:
+    """Synchronous helper: run fetch_service in a new event loop.
+
+    Input: service (str) - API name (e.g. "virustotal", "abuseipdb").
+           ip (str) - IP address or domain to look up.
+    Output: dict - JSON payload from the API, or an empty dict on error.
+    """
+    if aiohttp is None:
+        print("[ERROR] The 'aiohttp' library is not installed.")
         return {}
-    url = f"{API_BASE_URL}/{service}/{ip}"
-    try:
-        response = requests.get(url, timeout=REQUEST_TIMEOUT)
-        if response.status_code != 200:
-            print(f"[ERROR] {service} returned status "
-                  f"{response.status_code}.")
-            return {}
-        return response.json()
-    except requests.exceptions.ConnectionError:
-        print("[ERROR] Cannot connect to the API. Is mock_api.py running?")
-    except requests.exceptions.Timeout:
-        print(f"[ERROR] {service} request timed out.")
-    except ValueError:
-        print(f"[ERROR] Invalid JSON received from {service}.")
-    except requests.exceptions.RequestException as error:
-        print(f"[ERROR] Request failed: {error}")
-    return {}
+    return asyncio.run(fetch_service(service, ip))
 
 
 def query_virustotal(ip: str) -> dict:
