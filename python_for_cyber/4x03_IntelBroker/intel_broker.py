@@ -4,13 +4,15 @@
 Queries a local mock Threat Intelligence API (localhost:5000),
 runs a local Nmap scan, and aggregates everything into a TargetDossier.
 
-Usage: ./intel_broker.py <IP or domain>
+Usage: ./intel_broker.py <IP or domain> [-o report.json]
 """
 import argparse
 import asyncio
+import json
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 
 try:
     import aiohttp
@@ -306,6 +308,39 @@ class TargetDossier:
         ]
         return "\n".join(lines)
 
+    def to_dict(self) -> dict:
+        """Convert the dossier into a JSON-serializable dictionary.
+
+        Input: None.
+        Output: dict - {'target', 'timestamp', 'intelligence'}.
+        """
+        return {
+            "target": self.ip,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "intelligence": {
+                "virustotal": self.vt_data,
+                "shodan": self.shodan_data,
+                "abuseipdb": self.abuse_data,
+                "nmap": {"ports": self.nmap_ports},
+            },
+        }
+
+    def save_json(self, output_path: str) -> bool:
+        """Save the dossier as a JSON report.
+
+        Input: output_path (str) - path of the JSON file to write.
+        Output: bool - True if the file was written, False on error.
+        """
+        try:
+            with open(output_path, "w", encoding="utf-8") as report_file:
+                json.dump(self.to_dict(), report_file, indent=2)
+                report_file.write("\n")
+        except OSError as error:
+            print(f"[ERROR] Cannot write report to {output_path}: "
+                  f"{error.strerror}")
+            return False
+        return True
+
 
 async def build_dossier_async(ip: str) -> TargetDossier:
     """Run the 3 API queries AND the Nmap scan at the same time.
@@ -332,17 +367,20 @@ def build_dossier(ip: str) -> TargetDossier:
 
 
 def main(argv: list = None) -> TargetDossier:
-    """Parse the CLI argument, build the dossier and print its summary.
+    """Parse the CLI arguments, build the dossier and print its summary.
 
     Input: argv (list) - CLI arguments (default: sys.argv[1:]),
            a single IP string is also accepted.
-    Output: TargetDossier - the filled dossier (summary printed to stdout).
+    Output: TargetDossier - the filled dossier (summary printed to stdout,
+            JSON report written if --output is given).
     """
     if isinstance(argv, str):
         argv = [argv]
     parser = argparse.ArgumentParser(
         description="IntelBroker - automated IP reconnaissance tool.")
     parser.add_argument("ip", help="target IP address or domain")
+    parser.add_argument("-o", "--output",
+                        help="save the full dossier to this JSON file")
     args = parser.parse_args(argv)
     try:
         dossier = build_dossier(args.ip)
@@ -350,6 +388,8 @@ def main(argv: list = None) -> TargetDossier:
         print("\n[INFO] Scan interrupted by user.")
         sys.exit(1)
     print(dossier.summary())
+    if args.output and dossier.save_json(args.output):
+        print(f"[INFO] Report saved to {args.output}")
     return dossier
 
 
