@@ -68,7 +68,7 @@ Command examples:
 
 ```bash
 systemctl stop unattended-upgrades
-apt-mark hold '*'
+systemctl stop apt-daily.timer apt-daily-upgrade.timer
 ```
 
 ### Step 3 — Preserve Evidence
@@ -99,118 +99,189 @@ journalctl -xe > /tmp/system_log_snapshot.txt
 
 ## 4. Diagnosis Steps — Identify the Bad Package
 
-The objective is to determine which package caused the failure.
+The objective is to determine exactly which package (and which version change) caused the failure.
 
-### Step 1 — Review Package History
+Throughout this section, the example uses the failing service `nginx` and package `nginx`. Replace `PKG`, `SERVICE`, `OLD_VERSION` and `NEW_VERSION` with the real values.
 
-For Debian/Ubuntu systems:
-
-```bash
-grep "install " /var/log/dpkg.log
-```
-
-For RHEL/CentOS systems:
+### Step 1 — Confirm the Failing Service and Read Its Errors
 
 ```bash
-yum history
-```
-
-### Step 2 — Identify Recently Updated Packages
-
-```bash
-ls -lt /var/log/apt/
-```
-
-```bash
-apt list --upgradable
-```
-
-### Step 3 — Check Service Status
-
-```bash
-systemctl status <service_name>
-```
-
-### Step 4 — Review Error Logs
-
-```bash
-journalctl -u <service_name>
-```
-
-```bash
+systemctl --failed
+systemctl status nginx
+journalctl -u nginx --since "2 hours ago" --no-pager
 tail -n 50 /var/log/syslog
 ```
 
-### Step 5 — Validate Dependencies
+Note the exact time of the first error and the error message (e.g. "Failed to start", "undefined symbol", "Segmentation fault").
+
+### Step 2 — List Packages Changed During the Change Window
+
+Debian/Ubuntu — apt history (who ran it, which packages, old → new versions):
 
 ```bash
-ldd /usr/bin/<application_binary>
+grep -A6 "Start-Date" /var/log/apt/history.log | tail -n 40
+zgrep -h -A6 "Start-Date" /var/log/apt/history.log.*.gz
 ```
 
-### Step 6 — Confirm Kernel Version (if kernel update)
+Debian/Ubuntu — dpkg log (every install/upgrade/remove with timestamps):
+
+```bash
+grep -E " (install|upgrade|remove) " /var/log/dpkg.log | tail -n 30
+```
+
+RHEL/CentOS/Rocky:
+
+```bash
+yum history list
+yum history info last
+```
+
+Result: a short list of candidate packages upgraded just before the first error.
+
+### Step 3 — Correlate Packages with the Failing Service
+
+Find which candidate packages the service actually depends on:
+
+```bash
+dpkg -S "$(command -v nginx)"
+apt-cache depends nginx
+ldd /usr/sbin/nginx | grep "not found"
+```
+
+Any library reported as "not found", or any candidate package that appears in the dependency list, is the prime suspect.
+
+### Step 4 — Check Package Integrity and Configuration State
+
+```bash
+dpkg --audit
+dpkg -l | grep -v "^ii"
+dpkg --verify nginx
+nginx -t
+```
+
+A package not in the `ii` state, a failed post-install script, or a configuration test error confirms the package.
+
+### Step 5 — Confirm Kernel Version (if a kernel was updated)
 
 ```bash
 uname -r
+dpkg -l "linux-image-*" | grep "^ii"
 ```
+
+If the running kernel matches the one installed in the change window and the problem is a driver/boot issue, follow the kernel rollback in Section 5, Step 7.
+
+### Step 6 — Record the Diagnosis
+
+Before changing anything, record in the incident ticket:
+
+* Bad package name and NEW_VERSION (the version installed by the update)
+* OLD_VERSION (last known good version, from history.log)
+* Evidence (log lines, failed dependency, timestamps)
 
 ---
 
 ## 5. Rollback Procedure — Step-by-Step Recovery
 
-Rollback restores the system to the last known stable state.
+Rollback restores the bad package to its last known good version, then verifies and locks it.
 
-### Step 1 — Identify Previous Package Version
-
-```bash
-apt-cache policy <package_name>
-```
-
-### Step 2 — Downgrade the Package
+### Step 1 — Back Up Current State
 
 ```bash
-sudo apt install <package_name>=<previous_version>
+cp -a /etc/nginx /root/nginx-config-backup-$(date +%F-%H%M)
+dpkg -l > /root/packages-before-rollback.txt
 ```
 
-### Step 3 — Restart Service
+### Step 2 — Identify the Previous (Good) Version
 
 ```bash
-systemctl restart <service_name>
+apt-cache policy nginx
+apt list -a nginx
+ls /var/cache/apt/archives/ | grep nginx
 ```
 
-### Step 4 — Verify Service Recovery
+Use OLD_VERSION from the apt history recorded in Section 4, Step 6.
+
+### Step 3 — Downgrade the Package
+
+From the repository:
 
 ```bash
-systemctl status <service_name>
+sudo apt install nginx=1.18.0-6ubuntu14.4
 ```
+
+General form: `sudo apt install PKG=OLD_VERSION` (add `--allow-downgrades` if prompted).
+
+From the local apt cache if the old version is no longer in the repository:
 
 ```bash
-curl http://localhost
+sudo dpkg -i /var/cache/apt/archives/nginx_1.18.0-6ubuntu14.4_amd64.deb
 ```
 
-### Step 5 — Prevent Reinstallation
+RHEL/CentOS equivalent:
 
 ```bash
-apt-mark hold <package_name>
+sudo yum history undo last
+sudo yum downgrade nginx
 ```
 
-### Step 6 — Kernel Rollback (if required)
-
-1. Reboot system
-2. Select previous kernel from GRUB menu
-3. Log into system
-4. Mark new kernel as held
+### Step 4 — Hold the Package to Prevent Reinstallation
 
 ```bash
-apt-mark hold linux-image-<version>
+sudo apt-mark hold nginx
+apt-mark showhold
 ```
 
-### Step 7 — Restore from Backup (Last Resort)
+RHEL/CentOS: `sudo yum versionlock add nginx`
 
-If rollback fails:
+### Step 5 — Restart the Service
 
-* Restore system snapshot
-* Restore database backup
-* Rebuild service environment
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart nginx
+```
+
+### Step 6 — Verify Recovery
+
+```bash
+systemctl is-active nginx
+systemctl status nginx
+journalctl -u nginx -n 20 --no-pager
+dpkg -l nginx
+curl -I http://localhost
+```
+
+Success criteria: service is `active (running)`, installed version equals OLD_VERSION, no new errors in logs, and the application responds (HTTP 200).
+
+### Step 7 — Kernel Rollback (if a kernel update caused the failure)
+
+1. Reboot the system
+2. In the GRUB menu choose "Advanced options" and select the previous kernel
+3. Log in and confirm with `uname -r`
+4. Hold the bad kernel and set the good one as default
+
+```bash
+sudo apt-mark hold linux-image-6.8.0-50-generic
+sudo grub-set-default "1>2"
+sudo update-grub
+```
+
+### Step 8 — Restore from Backup (Last Resort)
+
+If the downgrade fails or the system is unrecoverable:
+
+* Restore the VM/filesystem snapshot taken before the maintenance window
+* Restore the database from the latest verified backup
+* Rebuild the service from configuration management
+* Re-run the verification checks in Step 6
+
+### Step 9 — Release the Hold Later
+
+Once a fixed version is published and tested in staging:
+
+```bash
+sudo apt-mark unhold nginx
+sudo apt install --only-upgrade nginx
+```
 
 ---
 
