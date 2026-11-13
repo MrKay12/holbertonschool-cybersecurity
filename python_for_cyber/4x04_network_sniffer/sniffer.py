@@ -19,8 +19,6 @@ try:
 except ImportError:
     IP = TCP = UDP = ICMP = None
 
-PACKET_COUNT = 5
-
 
 def get_protocol_name(packet) -> str:
     """Identify the transport protocol carried by an IP packet.
@@ -99,7 +97,10 @@ def has_root_privileges() -> bool:
 
 
 def main() -> int:
-    """Entry point: check the environment, then sniff packets.
+    """Entry point: check the environment, then sniff forever.
+
+    The capture runs until the user presses Ctrl+C, then the
+    script prints "[INFO] Stopping capture..." and exits cleanly.
 
     Returns:
         0 on success, 1 when Scapy is missing, privileges are
@@ -118,16 +119,17 @@ def main() -> int:
         return 1
 
     try:
-        sniff(count=PACKET_COUNT, prn=packet_handler)
+        sniff(prn=packet_handler, store=False)
+    except KeyboardInterrupt:
+        pass
     except PermissionError:
         print("[ERROR] Permission denied. Run with sudo.",
               file=sys.stderr)
         return 1
-    except KeyboardInterrupt:
-        print("\n[INFO] Capture stopped by user.")
     except OSError as error:
         print(f"[ERROR] Capture failed: {error}", file=sys.stderr)
         return 1
+    print("\n[INFO] Stopping capture...", flush=True)
     return 0
 
 
