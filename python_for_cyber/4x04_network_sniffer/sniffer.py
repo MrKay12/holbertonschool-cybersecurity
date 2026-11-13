@@ -42,7 +42,7 @@ class Sniffer:
             sniff_args["filter"] = args.filter
 
         try:
-            sniff(prn=self._process_packet, **sniff_args)
+            sniff(prn=self.packet_handler, **sniff_args)
         except PermissionError:
             print("[ERROR] Permission denied: run as root",
                   file=sys.stderr)
@@ -69,20 +69,18 @@ class Sniffer:
         parser.add_argument("-s", "--search", help="Search for pattern")
         return parser.parse_args()
 
-    def _process_packet(self, packet):
-        """Get packet details
+    def packet_handler(self, packet):
+        """Print packet summary and update stats
         """
+        print(packet.summary(), flush=True)
         layers = self.layers
         if packet.haslayer(layers["IP"]):
             if packet.haslayer(layers["TCP"]):
                 self.stats['TCP'] += 1
-                self.processors["TCP"].process(packet, self.search_string)
             elif packet.haslayer(layers["UDP"]):
                 self.stats['UDP'] += 1
             elif packet.haslayer(layers["ICMP"]):
                 self.stats['ICMP'] += 1
-            else:
-                print("UNKNOWN:", packet)
 
 
 class PacketProcessor:
