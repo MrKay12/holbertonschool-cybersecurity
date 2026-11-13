@@ -40,6 +40,24 @@ def get_protocol_name(packet) -> str:
     return ""
 
 
+def format_tcp(packet) -> str:
+    """Build the detailed line for a TCP packet.
+
+    Args:
+        packet: a Scapy packet that has both IP and TCP layers.
+
+    Returns:
+        A string like "[TCP] SRC:PORT -> DST:PORT | Flags: X".
+    """
+    ip_layer = packet[IP]
+    tcp_layer = packet[TCP]
+    sport = tcp_layer.sport
+    dport = tcp_layer.dport
+    flags = tcp_layer.flags
+    return (f"[TCP] {ip_layer.src}:{sport} -> {ip_layer.dst}:{dport}"
+            f" | Flags: {flags}")
+
+
 def packet_handler(packet) -> None:
     """Print a one-line description of a captured packet.
 
@@ -56,6 +74,9 @@ def packet_handler(packet) -> None:
     try:
         if IP is not None and packet.haslayer(IP):
             protocol = get_protocol_name(packet)
+            if protocol == "TCP":
+                print(format_tcp(packet), flush=True)
+                return
             if protocol:
                 print(f"[{protocol}] {packet[IP].src} -> {packet[IP].dst}",
                       flush=True)
