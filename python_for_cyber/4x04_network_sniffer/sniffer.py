@@ -9,7 +9,9 @@ stderr with a user-friendly message, never with a raw traceback.
 
 import argparse
 import os
+import queue
 import sys
+import threading
 
 try:
     from scapy.all import sniff
@@ -292,6 +294,9 @@ class Sniffer:
         verbose: when True, print a hex dump after each line.
         processors: PacketProcessor instances, tried in order.
         stats: packet count per protocol ("OTHER" for the rest).
+        packet_queue: hands packets from the capture thread to
+            the processing thread.
+        worker: the processing thread, while a capture runs.
     """
 
     def __init__(self, interface, filter_str, output_file,
@@ -315,9 +320,16 @@ class Sniffer:
                            UDPProcessor(search_string),
                            ICMPProcessor(search_string)]
         self.stats = {'TCP': 0, 'UDP': 0, 'ICMP': 0, 'OTHER': 0}
+        self.packet_queue = queue.Queue()
+        self.worker = None
 
     def start(self) -> int:
         """Check the environment, then sniff until Ctrl+C.
+
+        Capture and processing are decoupled: sniff() (thread 1)
+        only puts packets into a Queue, and a worker thread
+        (thread 2) gets them, parses them and prints them, so slow
+        console output never makes the capture drop packets.
 
         Privileges are checked up front (a warning is printed when
         not root) and enforced by catching the PermissionError that
@@ -342,7 +354,8 @@ class Sniffer:
             print("[WARN] Capturing without saving packets.",
                   file=sys.stderr)
 
-        packet_handler = self._process_packet
+        self._start_worker()
+        packet_handler = self._enqueue_packet
         try:
             sniff(prn=packet_handler, iface=self.interface,
                   filter=self.filter_str, store=False)
@@ -351,19 +364,84 @@ class Sniffer:
         except PermissionError:
             print("[ERROR] Root privileges required. Run with sudo.",
                   file=sys.stderr)
+            self._stop_worker()
             self._close_pcap_writer()
             return 1
         except (OSError, ValueError, Scapy_Exception) as error:
             print(f"[ERROR] Capture failed: {error}", file=sys.stderr)
+            self._stop_worker()
             self._close_pcap_writer()
             return 1
+        self._stop_worker()
         print("\n[INFO] Stopping capture...", flush=True)
         self.print_stats()
         self._close_pcap_writer()
         return 0
 
+    def _enqueue_packet(self, packet) -> None:
+        """sniff() callback (capture thread): queue one packet.
+
+        Kept as cheap as possible so the capture never blocks on
+        parsing or console output.
+
+        Args:
+            packet: the Scapy packet handed over by sniff().
+
+        Returns:
+            None.
+        """
+        self.packet_queue.put(packet)
+
+    def _start_worker(self) -> None:
+        """Start the processing thread that drains the queue.
+
+        Returns:
+            None. The thread is stored in self.worker.
+        """
+        self.worker = threading.Thread(target=self._worker_loop,
+                                       name="PacketProcessor",
+                                       daemon=True)
+        self.worker.start()
+
+    def _worker_loop(self) -> None:
+        """Processing thread: get packets and process them.
+
+        Runs until it gets the None sentinel put by _stop_worker().
+
+        Returns:
+            None.
+        """
+        while True:
+            packet = self.packet_queue.get()
+            try:
+                if packet is None:
+                    return
+                self._process_packet(packet)
+            except Exception as error:  # keep the worker alive
+                print(f"[WARN] Packet processing failed: {error}",
+                      file=sys.stderr)
+            finally:
+                self.packet_queue.task_done()
+
+    def _stop_worker(self) -> None:
+        """Let the worker finish the queued packets, then stop it.
+
+        Returns:
+            None. Every packet captured so far has been processed
+            when this returns (unless Ctrl+C is pressed again).
+        """
+        if self.worker is None:
+            return
+        self.packet_queue.put(None)
+        try:
+            self.worker.join()
+        except KeyboardInterrupt:
+            print("[WARN] Remaining queued packets discarded.",
+                  file=sys.stderr)
+        self.worker = None
+
     def _process_packet(self, packet) -> None:
-        """sniff() callback: save, describe and dump one packet.
+        """Processing thread: save, describe and dump one packet.
 
         The description is delegated to the matching protocol
         processor (see get_processor()).
