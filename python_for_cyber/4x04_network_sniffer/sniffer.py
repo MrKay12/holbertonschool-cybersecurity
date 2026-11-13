@@ -14,19 +14,55 @@ try:
 except ImportError:
     sniff = None
 
+try:
+    from scapy.all import IP, TCP, UDP, ICMP
+except ImportError:
+    IP = TCP = UDP = ICMP = None
+
 PACKET_COUNT = 5
 
 
+def get_protocol_name(packet) -> str:
+    """Identify the transport protocol carried by an IP packet.
+
+    Args:
+        packet: a Scapy packet that has an IP layer.
+
+    Returns:
+        "TCP", "UDP" or "ICMP", or an empty string if none matches.
+    """
+    if packet.haslayer(TCP):
+        return "TCP"
+    if packet.haslayer(UDP):
+        return "UDP"
+    if packet.haslayer(ICMP):
+        return "ICMP"
+    return ""
+
+
 def packet_handler(packet) -> None:
-    """Print a one-line summary of a captured packet.
+    """Print a one-line description of a captured packet.
+
+    IP packets carrying TCP, UDP or ICMP are printed as
+    "[PROTOCOL] SRC -> DST". Any other packet falls back to
+    Scapy's packet.summary() one-liner.
 
     Args:
         packet: the Scapy packet handed over by sniff().
 
     Returns:
-        None. The summary is written to stdout.
+        None. The description is written to stdout.
     """
-    print(packet.summary(), flush=True)
+    try:
+        if IP is not None and packet.haslayer(IP):
+            protocol = get_protocol_name(packet)
+            if protocol:
+                print(f"[{protocol}] {packet[IP].src} -> {packet[IP].dst}",
+                      flush=True)
+                return
+        print(packet.summary(), flush=True)
+    except (AttributeError, IndexError, TypeError):
+        print("[WARN] Unreadable packet skipped.", file=sys.stderr)
 
 
 def has_root_privileges() -> bool:
