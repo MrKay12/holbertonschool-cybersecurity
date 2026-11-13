@@ -2,8 +2,9 @@
 """PySniffer: a lightweight packet sniffer built on Scapy.
 
 Captures live packets from the network and prints a one-line
-summary of each one on stdout. Errors are reported on stderr
-with a user-friendly message, never with a raw traceback.
+description of each one on stdout. Packets can be filtered (BPF),
+dumped in hex and saved to a pcap file. Errors are reported on
+stderr with a user-friendly message, never with a raw traceback.
 """
 
 import argparse
@@ -26,22 +27,9 @@ except ImportError:
     Scapy_Exception = OSError
 
 try:
-    from scapy.utils import PcapWriter
+    from scapy.utils import PcapWriter, hexdump
 except ImportError:
-    PcapWriter = None
-
-try:
-    from scapy.utils import hexdump
-except ImportError:
-    hexdump = None
-
-# Set from -v/--verbose in main(): print a hex dump after each line.
-VERBOSE = False
-
-# Opened once in main() when --write is given, then shared with the
-# sniff() callback. Writes are buffered (sync=False) and flushed on
-# close, which is much faster than reopening the file per packet.
-PCAP_WRITER = None
+    PcapWriter = hexdump = None
 
 
 def get_protocol_name(packet) -> str:
@@ -100,32 +88,22 @@ def describe_packet(packet) -> str:
     return packet.summary()
 
 
-def packet_handler(packet) -> None:
-    """Handle one captured packet: save, describe and dump it.
+def packet_handler(packet) -> bool:
+    """Print the one-line description of a captured packet.
 
     Args:
         packet: the Scapy packet handed over by sniff().
 
     Returns:
-        None. The description is written to stdout, followed by
-        hexdump(packet) when --verbose is on. When --write is used,
-        the packet is also appended to the pcap file.
+        True if the line was printed, False if the packet could
+        not be read (a warning is printed on stderr).
     """
-    if PCAP_WRITER is not None:
-        try:
-            PCAP_WRITER.write(packet)
-        except (OSError, ValueError, TypeError, AttributeError) as error:
-            print(f"[WARN] Packet not saved: {error}", file=sys.stderr)
     try:
         print(describe_packet(packet), flush=True)
     except (AttributeError, IndexError, TypeError):
         print("[WARN] Unreadable packet skipped.", file=sys.stderr)
-        return
-    if VERBOSE and hexdump is not None:
-        try:
-            hexdump(packet)
-        except (TypeError, ValueError) as error:
-            print(f"[WARN] Hex dump failed: {error}", file=sys.stderr)
+        return False
+    return True
 
 
 def has_root_privileges() -> bool:
@@ -138,6 +116,142 @@ def has_root_privileges() -> bool:
         return os.geteuid() == 0
     except AttributeError:
         return False
+
+
+class Sniffer:
+    """Live packet sniffer: capture, describe, dump and save packets.
+
+    Attributes:
+        interface: interface to sniff on, or None for all.
+        filter_str: BPF filter string, or None for no filter.
+        output_file: pcap path to append packets to, or None.
+        verbose: when True, print a hex dump after each line.
+    """
+
+    def __init__(self, interface, filter_str, output_file,
+                 verbose: bool = False):
+        """Store the capture settings.
+
+        Args:
+            interface: interface name (e.g. "eth0") or None.
+            filter_str: BPF filter (e.g. "tcp port 80") or None.
+            output_file: pcap file path or None to skip saving.
+            verbose: print hexdump(packet) after each line if True.
+        """
+        self.interface = interface
+        self.filter_str = filter_str
+        self.output_file = output_file
+        self.verbose = verbose
+        self.pcap_writer = None
+
+    def start(self) -> int:
+        """Check the environment, then sniff until Ctrl+C.
+
+        Returns:
+            0 when the capture ends cleanly, 1 when Scapy is
+            missing, privileges are insufficient, the pcap file
+            cannot be opened or the capture fails.
+        """
+        if sniff is None:
+            print("[ERROR] Scapy is not installed. "
+                  "Run: pip install -r requirements.txt", file=sys.stderr)
+            return 1
+
+        if not has_root_privileges():
+            print("[ERROR] Root privileges required. Run with sudo.",
+                  file=sys.stderr)
+            return 1
+
+        if self.output_file and not self._open_pcap_writer():
+            return 1
+
+        packet_handler = self._process_packet
+        try:
+            sniff(prn=packet_handler, iface=self.interface,
+                  filter=self.filter_str, store=False)
+        except KeyboardInterrupt:
+            pass
+        except PermissionError:
+            print("[ERROR] Permission denied. Run with sudo.",
+                  file=sys.stderr)
+            self._close_pcap_writer()
+            return 1
+        except (OSError, ValueError, Scapy_Exception) as error:
+            print(f"[ERROR] Capture failed: {error}", file=sys.stderr)
+            self._close_pcap_writer()
+            return 1
+        print("\n[INFO] Stopping capture...", flush=True)
+        self._close_pcap_writer()
+        return 0
+
+    def _process_packet(self, packet) -> None:
+        """sniff() callback: save, describe and dump one packet.
+
+        Args:
+            packet: the Scapy packet handed over by sniff().
+
+        Returns:
+            None. Output goes to stdout and to the pcap file.
+        """
+        if self.pcap_writer is not None:
+            try:
+                self.pcap_writer.write(packet)
+            except (OSError, ValueError, TypeError,
+                    AttributeError) as error:
+                print(f"[WARN] Packet not saved: {error}",
+                      file=sys.stderr)
+        if not packet_handler(packet):
+            return
+        if self.verbose and hexdump is not None:
+            try:
+                hexdump(packet)
+            except (TypeError, ValueError) as error:
+                print(f"[WARN] Hex dump failed: {error}", file=sys.stderr)
+
+    def _open_pcap_writer(self) -> bool:
+        """Open a buffered pcap writer appending to output_file.
+
+        Writes are buffered (sync=False) and flushed on close, which
+        is much faster than reopening the file for every packet.
+
+        Returns:
+            True if the writer is ready, False otherwise (an
+            [ERROR] message is printed on stderr).
+        """
+        if PcapWriter is None:
+            print("[ERROR] PcapWriter is unavailable in this Scapy install.",
+                  file=sys.stderr)
+            return False
+        try:
+            self.pcap_writer = PcapWriter(self.output_file, append=True,
+                                          sync=False)
+            return True
+        except PermissionError:
+            print(f"[ERROR] Permission denied: cannot write "
+                  f"{self.output_file}.", file=sys.stderr)
+        except FileNotFoundError:
+            print(f"[ERROR] Directory not found for {self.output_file}.",
+                  file=sys.stderr)
+        except OSError as error:
+            print(f"[ERROR] Cannot open {self.output_file}: {error}",
+                  file=sys.stderr)
+        return False
+
+    def _close_pcap_writer(self) -> None:
+        """Flush and close the pcap writer, if one is open.
+
+        Returns:
+            None. Prints where the packets were saved.
+        """
+        if self.pcap_writer is None:
+            return
+        try:
+            self.pcap_writer.close()
+            print(f"[INFO] Packets saved to {self.output_file}.")
+        except (OSError, AttributeError) as error:
+            print(f"[ERROR] Could not finalize pcap file: {error}",
+                  file=sys.stderr)
+        self.pcap_writer = None
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -163,102 +277,17 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def open_pcap_writer(path: str):
-    """Open a buffered pcap writer that appends to a file.
-
-    Args:
-        path: destination .pcap file, created if it does not exist.
-
-    Returns:
-        A scapy PcapWriter, or None if the file cannot be opened
-        (an [ERROR] message is printed on stderr).
-    """
-    if PcapWriter is None:
-        print("[ERROR] PcapWriter is unavailable in this Scapy install.",
-              file=sys.stderr)
-        return None
-    try:
-        return PcapWriter(path, append=True, sync=False)
-    except PermissionError:
-        print(f"[ERROR] Permission denied: cannot write {path}.",
-              file=sys.stderr)
-    except FileNotFoundError:
-        print(f"[ERROR] Directory not found for {path}.", file=sys.stderr)
-    except OSError as error:
-        print(f"[ERROR] Cannot open {path}: {error}", file=sys.stderr)
-    return None
-
-
-def close_pcap_writer() -> None:
-    """Flush and close the global pcap writer, if one is open.
-
-    Returns:
-        None. Prints where the packets were saved.
-    """
-    global PCAP_WRITER
-    if PCAP_WRITER is None:
-        return
-    try:
-        PCAP_WRITER.close()
-        print(f"[INFO] Packets saved to {PCAP_WRITER.filename}.")
-    except (OSError, AttributeError) as error:
-        print(f"[ERROR] Could not finalize pcap file: {error}",
-              file=sys.stderr)
-    PCAP_WRITER = None
-
-
 def main() -> int:
-    """Entry point: check the environment, then sniff forever.
-
-    The -i/--interface and -f/--filter options are passed to
-    sniff() as iface and filter (BPF syntax). With -w/--write,
-    every packet is also appended to the given pcap file. With
-    -v/--verbose, a hex dump follows each summary line.
-
-    The capture runs until the user presses Ctrl+C, then the
-    script prints "[INFO] Stopping capture..." and exits cleanly.
+    """Entry point: parse the options and run the sniffer.
 
     Returns:
-        0 on success, 1 when Scapy is missing, privileges are
-        insufficient or the capture fails.
+        The exit status returned by Sniffer.start().
     """
-    global PCAP_WRITER, VERBOSE
     print("[INFO] PySniffer initialized.", flush=True)
     args = parse_arguments()
-    VERBOSE = args.verbose
-
-    if sniff is None:
-        print("[ERROR] Scapy is not installed. "
-              "Run: pip install -r requirements.txt", file=sys.stderr)
-        return 1
-
-    if not has_root_privileges():
-        print("[ERROR] Root privileges required. Run with sudo.",
-              file=sys.stderr)
-        return 1
-
-    if args.write:
-        PCAP_WRITER = open_pcap_writer(args.write)
-        if PCAP_WRITER is None:
-            return 1
-
-    try:
-        sniff(prn=packet_handler, iface=args.interface,
-              filter=args.filter, store=False)
-    except KeyboardInterrupt:
-        pass
-    except PermissionError:
-        print("[ERROR] Permission denied. Run with sudo.",
-              file=sys.stderr)
-        close_pcap_writer()
-        return 1
-    except (OSError, ValueError, Scapy_Exception) as error:
-        print(f"[ERROR] Capture failed: {error}", file=sys.stderr)
-        close_pcap_writer()
-        return 1
-    print("\n[INFO] Stopping capture...", flush=True)
-    close_pcap_writer()
-    return 0
+    sniffer = Sniffer(args.interface, args.filter, args.write,
+                      verbose=args.verbose)
+    return sniffer.start()
 
 
 if __name__ == '__main__':
