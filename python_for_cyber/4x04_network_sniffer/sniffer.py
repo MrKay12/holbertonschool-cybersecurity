@@ -75,4 +75,6 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    EXIT_STATUS = main()
+    if EXIT_STATUS != 0:
+        sys.exit(EXIT_STATUS)
