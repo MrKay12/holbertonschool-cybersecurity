@@ -68,10 +68,12 @@ class PacketProcessor:
     the Scapy layer it handles and implements process().
 
     Attributes:
+        name: protocol label, used in output and statistics.
         layer: the Scapy layer class this processor handles.
         search_string: text looked for in the Raw payload, or None.
     """
 
+    name = ""
     layer = None
 
     def __init__(self, search_string=None):
@@ -194,6 +196,7 @@ class PacketProcessor:
 class TCPProcessor(PacketProcessor):
     """Describe TCP packets with ports and flags."""
 
+    name = "TCP"
     layer = TCP
 
     def process(self, packet, search_string=None) -> str:
@@ -221,6 +224,7 @@ class TCPProcessor(PacketProcessor):
 class UDPProcessor(PacketProcessor):
     """Describe UDP packets."""
 
+    name = "UDP"
     layer = UDP
 
     def process(self, packet, search_string=None) -> str:
@@ -244,6 +248,7 @@ class UDPProcessor(PacketProcessor):
 class ICMPProcessor(PacketProcessor):
     """Describe ICMP packets."""
 
+    name = "ICMP"
     layer = ICMP
 
     def process(self, packet, search_string=None) -> str:
@@ -286,6 +291,7 @@ class Sniffer:
         search_string: text searched in payloads, or None.
         verbose: when True, print a hex dump after each line.
         processors: PacketProcessor instances, tried in order.
+        stats: packet count per protocol ("OTHER" for the rest).
     """
 
     def __init__(self, interface, filter_str, output_file,
@@ -308,6 +314,7 @@ class Sniffer:
         self.processors = [TCPProcessor(search_string),
                            UDPProcessor(search_string),
                            ICMPProcessor(search_string)]
+        self.stats = {'TCP': 0, 'UDP': 0, 'ICMP': 0, 'OTHER': 0}
 
     def start(self) -> int:
         """Check the environment, then sniff until Ctrl+C.
@@ -351,6 +358,7 @@ class Sniffer:
             self._close_pcap_writer()
             return 1
         print("\n[INFO] Stopping capture...", flush=True)
+        self.print_stats()
         self._close_pcap_writer()
         return 0
 
@@ -398,6 +406,32 @@ class Sniffer:
                 return processor
         return None
 
+    def update_stats(self, processor) -> None:
+        """Count one packet for the protocol of its processor.
+
+        Args:
+            processor: the PacketProcessor that handles the packet,
+                or None for unsupported packets (counted as OTHER).
+
+        Returns:
+            None. self.stats is updated in place.
+        """
+        protocol = processor.name if processor is not None else "OTHER"
+        self.stats[protocol] = self.stats.get(protocol, 0) + 1
+
+    def print_stats(self) -> None:
+        """Print the per-protocol packet counts as a table.
+
+        Returns:
+            None. The table is written to stdout.
+        """
+        total = sum(self.stats.values())
+        print("[INFO] Capture statistics:")
+        print(f"  {'PROTOCOL':<9}{'PACKETS':>8}")
+        for protocol, count in self.stats.items():
+            print(f"  {protocol:<9}{count:>8}")
+        print(f"  {'TOTAL':<9}{total:>8}", flush=True)
+
     def _dispatch(self, packet) -> bool:
         """Delegate a packet to its processor, or fall back.
 
@@ -410,6 +444,7 @@ class Sniffer:
         """
         try:
             processor = self.get_processor(packet)
+            self.update_stats(processor)
             if processor is None:
                 return packet_handler(packet)
             processor.process(packet)
