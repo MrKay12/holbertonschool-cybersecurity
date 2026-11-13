@@ -27,6 +27,7 @@ IP = getattr(scapy_all, "IP", None)
 TCP = getattr(scapy_all, "TCP", None)
 UDP = getattr(scapy_all, "UDP", None)
 ICMP = getattr(scapy_all, "ICMP", None)
+Raw = getattr(scapy_all, "Raw", None)
 
 try:
     from scapy.error import Scapy_Exception
@@ -68,9 +69,19 @@ class PacketProcessor:
 
     Attributes:
         layer: the Scapy layer class this processor handles.
+        search_string: text looked for in the Raw payload, or None.
     """
 
     layer = None
+
+    def __init__(self, search_string=None):
+        """Create a processor.
+
+        Args:
+            search_string: text to look for in packet payloads
+                (deep packet inspection), or None to disable it.
+        """
+        self.search_string = search_string
 
     def matches(self, packet) -> bool:
         """Tell whether this processor handles the given packet.
@@ -83,11 +94,12 @@ class PacketProcessor:
         """
         return self.layer is not None and packet.haslayer(self.layer)
 
-    def process(self, packet) -> str:
-        """Describe a packet and print the result.
+    def process(self, packet, search_string=None) -> str:
+        """Describe a packet, print it, then search its payload.
 
         Args:
             packet: a Scapy packet carrying this processor's layer.
+            search_string: optional payload search override.
 
         Returns:
             The line printed on stdout.
@@ -96,6 +108,49 @@ class PacketProcessor:
             NotImplementedError: subclasses must override it.
         """
         raise NotImplementedError("process() must be implemented")
+
+    @staticmethod
+    def payload_to_text(payload) -> str:
+        """Convert a Raw payload to text without ever raising.
+
+        Args:
+            payload: the Raw "load" field (bytes, or str in tests).
+
+        Returns:
+            The decoded text; undecodable bytes are dropped.
+        """
+        if isinstance(payload, (bytes, bytearray)):
+            return payload.decode("utf-8", errors="ignore")
+        try:
+            return str(payload)
+        except (TypeError, ValueError):
+            return ""
+
+    def search_payload(self, packet, search_string=None) -> bool:
+        """Look for the search string in the packet's Raw payload.
+
+        Prints "[ALERT] Payload Match found!" when it matches.
+
+        Args:
+            packet: the packet to inspect.
+            search_string: overrides self.search_string if given.
+
+        Returns:
+            True if the payload contains the search string.
+        """
+        needle = search_string or self.search_string
+        if not needle or Raw is None:
+            return False
+        try:
+            if not packet.haslayer(Raw):
+                return False
+        except (AttributeError, TypeError):
+            return False
+        text = self.payload_to_text(self.get_field(packet, Raw, "load", b""))
+        if needle in text:
+            print("[ALERT] Payload Match found!", flush=True)
+            return True
+        return False
 
     @staticmethod
     def get_field(packet, layer, name: str, default="?"):
@@ -141,11 +196,12 @@ class TCPProcessor(PacketProcessor):
 
     layer = TCP
 
-    def process(self, packet) -> str:
+    def process(self, packet, search_string=None) -> str:
         """Print "[TCP] SRC:PORT -> DST:PORT | Flags: X".
 
         Args:
             packet: a Scapy packet with IP and TCP layers.
+            search_string: optional payload search override.
 
         Returns:
             The line printed on stdout.
@@ -158,6 +214,7 @@ class TCPProcessor(PacketProcessor):
         line = (f"[TCP] {src}:{sport} -> {dst}:{dport}"
                 f" | Flags: {flags}")
         print(line, flush=True)
+        self.search_payload(packet, search_string)
         return line
 
 
@@ -166,11 +223,12 @@ class UDPProcessor(PacketProcessor):
 
     layer = UDP
 
-    def process(self, packet) -> str:
+    def process(self, packet, search_string=None) -> str:
         """Print "[UDP] SRC -> DST".
 
         Args:
             packet: a Scapy packet with IP and UDP layers.
+            search_string: optional payload search override.
 
         Returns:
             The line printed on stdout.
@@ -179,6 +237,7 @@ class UDPProcessor(PacketProcessor):
         dst = self.get_field(packet, IP, "dst")
         line = f"[UDP] {src} -> {dst}"
         print(line, flush=True)
+        self.search_payload(packet, search_string)
         return line
 
 
@@ -187,11 +246,12 @@ class ICMPProcessor(PacketProcessor):
 
     layer = ICMP
 
-    def process(self, packet) -> str:
+    def process(self, packet, search_string=None) -> str:
         """Print "[ICMP] SRC -> DST".
 
         Args:
             packet: a Scapy packet with IP and ICMP layers.
+            search_string: optional payload search override.
 
         Returns:
             The line printed on stdout.
@@ -200,6 +260,7 @@ class ICMPProcessor(PacketProcessor):
         dst = self.get_field(packet, IP, "dst")
         line = f"[ICMP] {src} -> {dst}"
         print(line, flush=True)
+        self.search_payload(packet, search_string)
         return line
 
 
@@ -222,26 +283,31 @@ class Sniffer:
         interface: interface to sniff on, or None for all.
         filter_str: BPF filter string, or None for no filter.
         output_file: pcap path to append packets to, or None.
+        search_string: text searched in payloads, or None.
         verbose: when True, print a hex dump after each line.
         processors: PacketProcessor instances, tried in order.
     """
 
     def __init__(self, interface, filter_str, output_file,
-                 verbose: bool = False):
+                 search_string=None, verbose: bool = False):
         """Store the capture settings.
 
         Args:
             interface: interface name (e.g. "eth0") or None.
             filter_str: BPF filter (e.g. "tcp port 80") or None.
             output_file: pcap file path or None to skip saving.
+            search_string: payload text to alert on, or None.
             verbose: print hexdump(packet) after each line if True.
         """
         self.interface = interface
         self.filter_str = filter_str
         self.output_file = output_file
+        self.search_string = search_string
         self.verbose = verbose
         self.pcap_writer = None
-        self.processors = [TCPProcessor(), UDPProcessor(), ICMPProcessor()]
+        self.processors = [TCPProcessor(search_string),
+                           UDPProcessor(search_string),
+                           ICMPProcessor(search_string)]
 
     def start(self) -> int:
         """Check the environment, then sniff until Ctrl+C.
@@ -403,8 +469,8 @@ def parse_arguments() -> argparse.Namespace:
 
     Returns:
         A namespace with "interface" (str or None), "filter"
-        (BPF string or None), "verbose" (bool) and "write"
-        (pcap path or None).
+        (BPF string or None), "search" (str or None), "verbose"
+        (bool) and "write" (pcap path or None).
     """
     parser = argparse.ArgumentParser(
         prog="PySniffer",
@@ -414,6 +480,8 @@ def parse_arguments() -> argparse.Namespace:
                         help="network interface to sniff on (e.g. eth0)")
     parser.add_argument("-f", "--filter",
                         help='BPF filter string (e.g. "tcp port 80")')
+    parser.add_argument("-s", "--search", metavar="STRING",
+                        help="alert when a payload contains STRING")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="print a hex dump of each packet")
     parser.add_argument("-w", "--write", metavar="OUTPUT.pcap",
@@ -430,7 +498,7 @@ def main() -> int:
     print("[INFO] PySniffer initialized.", flush=True)
     args = parse_arguments()
     sniffer = Sniffer(args.interface, args.filter, args.write,
-                      verbose=args.verbose)
+                      search_string=args.search, verbose=args.verbose)
     return sniffer.start()
 
 
