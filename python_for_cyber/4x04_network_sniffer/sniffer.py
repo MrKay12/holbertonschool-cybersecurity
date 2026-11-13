@@ -30,6 +30,14 @@ try:
 except ImportError:
     PcapWriter = None
 
+try:
+    from scapy.utils import hexdump
+except ImportError:
+    hexdump = None
+
+# Set from -v/--verbose in main(): print a hex dump after each line.
+VERBOSE = False
+
 # Opened once in main() when --write is given, then shared with the
 # sniff() callback. Writes are buffered (sync=False) and flushed on
 # close, which is much faster than reopening the file per packet.
@@ -72,19 +80,36 @@ def format_tcp(packet) -> str:
             f" | Flags: {flags}")
 
 
-def packet_handler(packet) -> None:
-    """Print a one-line description of a captured packet.
-
-    IP packets carrying TCP, UDP or ICMP are printed as
-    "[PROTOCOL] SRC -> DST". Any other packet falls back to
-    Scapy's packet.summary() one-liner.
+def describe_packet(packet) -> str:
+    """Build the one-line description of a packet.
 
     Args:
         packet: the Scapy packet handed over by sniff().
 
     Returns:
-        None. The description is written to stdout and, when
-        --write is used, the packet is appended to the pcap file.
+        "[TCP] SRC:PORT -> DST:PORT | Flags: X" for TCP,
+        "[PROTOCOL] SRC -> DST" for UDP and ICMP, or Scapy's
+        packet.summary() for any other packet.
+    """
+    if IP is not None and packet.haslayer(IP):
+        protocol = get_protocol_name(packet)
+        if protocol == "TCP":
+            return format_tcp(packet)
+        if protocol:
+            return f"[{protocol}] {packet[IP].src} -> {packet[IP].dst}"
+    return packet.summary()
+
+
+def packet_handler(packet) -> None:
+    """Handle one captured packet: save, describe and dump it.
+
+    Args:
+        packet: the Scapy packet handed over by sniff().
+
+    Returns:
+        None. The description is written to stdout, followed by
+        hexdump(packet) when --verbose is on. When --write is used,
+        the packet is also appended to the pcap file.
     """
     if PCAP_WRITER is not None:
         try:
@@ -92,18 +117,15 @@ def packet_handler(packet) -> None:
         except (OSError, ValueError, TypeError, AttributeError) as error:
             print(f"[WARN] Packet not saved: {error}", file=sys.stderr)
     try:
-        if IP is not None and packet.haslayer(IP):
-            protocol = get_protocol_name(packet)
-            if protocol == "TCP":
-                print(format_tcp(packet), flush=True)
-                return
-            if protocol:
-                print(f"[{protocol}] {packet[IP].src} -> {packet[IP].dst}",
-                      flush=True)
-                return
-        print(packet.summary(), flush=True)
+        print(describe_packet(packet), flush=True)
     except (AttributeError, IndexError, TypeError):
         print("[WARN] Unreadable packet skipped.", file=sys.stderr)
+        return
+    if VERBOSE and hexdump is not None:
+        try:
+            hexdump(packet)
+        except (TypeError, ValueError) as error:
+            print(f"[WARN] Hex dump failed: {error}", file=sys.stderr)
 
 
 def has_root_privileges() -> bool:
@@ -123,7 +145,8 @@ def parse_arguments() -> argparse.Namespace:
 
     Returns:
         A namespace with "interface" (str or None), "filter"
-        (BPF string or None) and "write" (pcap path or None).
+        (BPF string or None), "verbose" (bool) and "write"
+        (pcap path or None).
     """
     parser = argparse.ArgumentParser(
         prog="PySniffer",
@@ -133,6 +156,8 @@ def parse_arguments() -> argparse.Namespace:
                         help="network interface to sniff on (e.g. eth0)")
     parser.add_argument("-f", "--filter",
                         help='BPF filter string (e.g. "tcp port 80")')
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="print a hex dump of each packet")
     parser.add_argument("-w", "--write", metavar="OUTPUT.pcap",
                         help="append captured packets to a pcap file")
     return parser.parse_args()
@@ -187,7 +212,8 @@ def main() -> int:
 
     The -i/--interface and -f/--filter options are passed to
     sniff() as iface and filter (BPF syntax). With -w/--write,
-    every packet is also appended to the given pcap file.
+    every packet is also appended to the given pcap file. With
+    -v/--verbose, a hex dump follows each summary line.
 
     The capture runs until the user presses Ctrl+C, then the
     script prints "[INFO] Stopping capture..." and exits cleanly.
@@ -196,9 +222,10 @@ def main() -> int:
         0 on success, 1 when Scapy is missing, privileges are
         insufficient or the capture fails.
     """
-    global PCAP_WRITER
+    global PCAP_WRITER, VERBOSE
     print("[INFO] PySniffer initialized.", flush=True)
     args = parse_arguments()
+    VERBOSE = args.verbose
 
     if sniff is None:
         print("[ERROR] Scapy is not installed. "
