@@ -1,107 +1,77 @@
 #!/usr/bin/env python3
+"""PySniffer: a lightweight packet sniffer built on Scapy.
 
-import argparse
+Captures live packets from the network and prints a one-line
+summary of each one on stdout. Errors are reported on stderr
+with a user-friendly message, never with a raw traceback.
+"""
+
+import os
 import sys
 
+try:
+    from scapy.all import sniff
+except ImportError:
+    sniff = None
 
-class Sniffer:
-    def __init__(self, interface, filter_str, output_file, search_string):
-        self.interface = interface
-        self.filter_str = filter_str
-        self.output_file = output_file
-        self.search_string = search_string
-        self.stats = {
-            'TCP': 0,
-            'UDP': 0,
-            'ICMP': 0,
-        }
-        self.processors = {
-            "TCP": TCPProcessor(),
-        }
-
-    def start(self):
-        """sniffer start
-        """
-        args = self.get_cli_parser()
-
-        if args.search:
-            self.search_string = args.search
-
-        try:
-            from scapy.all import sniff, IP, TCP, UDP, ICMP
-        except ImportError:
-            print("[ERROR] scapy is not installed "
-                  "(pip install -r requirements.txt)", file=sys.stderr)
-            return 1
-        self.layers = {"IP": IP, "TCP": TCP, "UDP": UDP, "ICMP": ICMP}
-
-        sniff_args = {"store": False}
-        if args.interface:
-            sniff_args["iface"] = args.interface
-        if args.filter:
-            sniff_args["filter"] = args.filter
-
-        try:
-            sniff(prn=self.packet_handler, **sniff_args)
-        except PermissionError:
-            print("[ERROR] Permission denied: run as root",
-                  file=sys.stderr)
-            return 1
-        except KeyboardInterrupt:
-            pass
-        print("\n[INFO] Stopping capture...")
-        print(self.stats)
-        return 0
-
-    def get_cli_parser(self):
-        parser = argparse.ArgumentParser(
-            prog="PySniffer",
-            description="Capture packets"
-        )
-
-        parser.add_argument("-i", "--interface", help="Interface to sniff")
-        parser.add_argument("-f", "--filter", help="BPF filter to use")
-        parser.add_argument("-v",
-                            "--verbose",
-                            help="Verbose mode",
-                            action="store_true")
-        parser.add_argument("--write", help="Write result on file")
-        parser.add_argument("-s", "--search", help="Search for pattern")
-        return parser.parse_args()
-
-    def packet_handler(self, packet):
-        """Print packet summary and update stats
-        """
-        print(packet.summary(), flush=True)
-        layers = self.layers
-        if packet.haslayer(layers["IP"]):
-            if packet.haslayer(layers["TCP"]):
-                self.stats['TCP'] += 1
-            elif packet.haslayer(layers["UDP"]):
-                self.stats['UDP'] += 1
-            elif packet.haslayer(layers["ICMP"]):
-                self.stats['ICMP'] += 1
+PACKET_COUNT = 5
 
 
-class PacketProcessor:
-    def process(self, packet):
-        raise NotImplementedError
+def packet_handler(packet) -> None:
+    """Print a one-line summary of a captured packet.
+
+    Args:
+        packet: the Scapy packet handed over by sniff().
+
+    Returns:
+        None. The summary is written to stdout.
+    """
+    print(packet.summary(), flush=True)
 
 
-class TCPProcessor(PacketProcessor):
-    def process(self, packet, search_string):
-        print("[TCP]")
+def has_root_privileges() -> bool:
+    """Tell whether the script runs with root privileges.
+
+    Returns:
+        True if the effective user id is 0 (root), False otherwise.
+    """
+    try:
+        return os.geteuid() == 0
+    except AttributeError:
+        return False
 
 
 def main() -> int:
-    """Entry Point
+    """Entry point: check the environment, then sniff packets.
+
+    Returns:
+        0 on success, 1 when Scapy is missing, privileges are
+        insufficient or the capture fails.
     """
     print("[INFO] PySniffer initialized.", flush=True)
-    sniffer = Sniffer("eth0",
-                      "tcp or udp or icmp",
-                      "capture.pcap",
-                      "password")
-    return sniffer.start()
+
+    if sniff is None:
+        print("[ERROR] Scapy is not installed. "
+              "Run: pip install -r requirements.txt", file=sys.stderr)
+        return 1
+
+    if not has_root_privileges():
+        print("[ERROR] Root privileges required. Run with sudo.",
+              file=sys.stderr)
+        return 1
+
+    try:
+        sniff(count=PACKET_COUNT, prn=packet_handler)
+    except PermissionError:
+        print("[ERROR] Permission denied. Run with sudo.",
+              file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\n[INFO] Capture stopped by user.")
+    except OSError as error:
+        print(f"[ERROR] Capture failed: {error}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == '__main__':
