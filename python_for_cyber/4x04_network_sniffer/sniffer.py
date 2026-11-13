@@ -17,9 +17,16 @@ except ImportError:
     sniff = None
 
 try:
-    from scapy.all import IP, TCP, UDP, ICMP
+    import scapy.all as scapy_all
 except ImportError:
-    IP = TCP = UDP = ICMP = None
+    scapy_all = None
+
+# Looked up one by one so a partial Scapy (or a test double)
+# missing one layer does not disable the others.
+IP = getattr(scapy_all, "IP", None)
+TCP = getattr(scapy_all, "TCP", None)
+UDP = getattr(scapy_all, "UDP", None)
+ICMP = getattr(scapy_all, "ICMP", None)
 
 try:
     from scapy.error import Scapy_Exception
@@ -90,6 +97,44 @@ class PacketProcessor:
         """
         raise NotImplementedError("process() must be implemented")
 
+    @staticmethod
+    def get_field(packet, layer, name: str, default="?"):
+        """Read a header field without ever raising.
+
+        The field is looked up on the layer returned by
+        packet.getlayer(layer), then on packet[layer], then on the
+        packet itself (Scapy forwards unknown attributes to upper
+        layers), first as an attribute, then in a "fields" dict.
+
+        Args:
+            packet: the packet to read from.
+            layer: the Scapy layer class holding the field.
+            name: field name, e.g. "src", "sport" or "flags".
+            default: value returned when the field is not found.
+
+        Returns:
+            The field value, or default.
+        """
+        candidates = []
+        for accessor in ("getlayer", "__getitem__"):
+            try:
+                candidates.append(getattr(packet, accessor)(layer))
+            except (AttributeError, IndexError, KeyError, TypeError,
+                    ValueError):
+                continue
+        candidates.append(packet)
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            try:
+                value = getattr(candidate, name)
+            except (AttributeError, IndexError, KeyError, TypeError):
+                fields = getattr(candidate, "fields", None)
+                value = fields.get(name) if isinstance(fields, dict) else None
+            if value is not None:
+                return value
+        return default
+
 
 class TCPProcessor(PacketProcessor):
     """Describe TCP packets with ports and flags."""
@@ -105,12 +150,12 @@ class TCPProcessor(PacketProcessor):
         Returns:
             The line printed on stdout.
         """
-        ip_layer = packet[IP]
-        tcp_layer = packet[TCP]
-        sport = tcp_layer.sport
-        dport = tcp_layer.dport
-        flags = tcp_layer.flags
-        line = (f"[TCP] {ip_layer.src}:{sport} -> {ip_layer.dst}:{dport}"
+        src = self.get_field(packet, IP, "src")
+        dst = self.get_field(packet, IP, "dst")
+        sport = self.get_field(packet, TCP, "sport")
+        dport = self.get_field(packet, TCP, "dport")
+        flags = self.get_field(packet, TCP, "flags")
+        line = (f"[TCP] {src}:{sport} -> {dst}:{dport}"
                 f" | Flags: {flags}")
         print(line, flush=True)
         return line
@@ -130,7 +175,9 @@ class UDPProcessor(PacketProcessor):
         Returns:
             The line printed on stdout.
         """
-        line = f"[UDP] {packet[IP].src} -> {packet[IP].dst}"
+        src = self.get_field(packet, IP, "src")
+        dst = self.get_field(packet, IP, "dst")
+        line = f"[UDP] {src} -> {dst}"
         print(line, flush=True)
         return line
 
@@ -149,7 +196,9 @@ class ICMPProcessor(PacketProcessor):
         Returns:
             The line printed on stdout.
         """
-        line = f"[ICMP] {packet[IP].src} -> {packet[IP].dst}"
+        src = self.get_field(packet, IP, "src")
+        dst = self.get_field(packet, IP, "dst")
+        line = f"[ICMP] {src} -> {dst}"
         print(line, flush=True)
         return line
 
