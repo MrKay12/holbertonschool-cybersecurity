@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-from scapy.all import sniff, Packet, IP, TCP, UDP, ICMP
+import sys
 
 
 class Sniffer:
@@ -22,18 +22,36 @@ class Sniffer:
     def start(self):
         """sniffer start
         """
-        print(dir(self.__init__))
         args = self.get_cli_parser()
-        sniff_args = {"store": False}
 
         if args.search:
             self.search_string = args.search
 
         try:
+            from scapy.all import sniff, IP, TCP, UDP, ICMP
+        except ImportError:
+            print("[ERROR] scapy is not installed "
+                  "(pip install -r requirements.txt)", file=sys.stderr)
+            return 1
+        self.layers = {"IP": IP, "TCP": TCP, "UDP": UDP, "ICMP": ICMP}
+
+        sniff_args = {"store": False}
+        if args.interface:
+            sniff_args["iface"] = args.interface
+        if args.filter:
+            sniff_args["filter"] = args.filter
+
+        try:
             sniff(prn=self._process_packet, **sniff_args)
+        except PermissionError:
+            print("[ERROR] Permission denied: run as root",
+                  file=sys.stderr)
+            return 1
         except KeyboardInterrupt:
-            print(self.stats)
-            print("\n[INFO] Stopping capture...")
+            pass
+        print("\n[INFO] Stopping capture...")
+        print(self.stats)
+        return 0
 
     def get_cli_parser(self):
         parser = argparse.ArgumentParser(
@@ -54,13 +72,14 @@ class Sniffer:
     def _process_packet(self, packet):
         """Get packet details
         """
-        if packet.haslayer(IP):
-            if packet.haslayer(TCP):
+        layers = self.layers
+        if packet.haslayer(layers["IP"]):
+            if packet.haslayer(layers["TCP"]):
                 self.stats['TCP'] += 1
                 self.processors["TCP"].process(packet, self.search_string)
-            elif packet.haslayer(UDP):
+            elif packet.haslayer(layers["UDP"]):
                 self.stats['UDP'] += 1
-            elif packet.haslayer(ICMP):
+            elif packet.haslayer(layers["ICMP"]):
                 self.stats['ICMP'] += 1
             else:
                 print("UNKNOWN:", packet)
@@ -76,16 +95,16 @@ class TCPProcessor(PacketProcessor):
         print("[TCP]")
 
 
-def main() -> None:
+def main() -> int:
     """Entry Point
     """
-    print("[INFO] PySniffer initialized.")
+    print("[INFO] PySniffer initialized.", flush=True)
     sniffer = Sniffer("eth0",
                       "tcp or udp or icmp",
                       "capture.pcap",
                       "password")
-    sniffer.start()
+    return sniffer.start()
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
