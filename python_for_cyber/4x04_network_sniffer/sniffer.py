@@ -147,10 +147,15 @@ class Sniffer:
     def start(self) -> int:
         """Check the environment, then sniff until Ctrl+C.
 
+        Privileges are checked up front (a warning is printed when
+        not root) and enforced by catching the PermissionError that
+        sniff() raises when the capture is refused.
+
         Returns:
             0 when the capture ends cleanly, 1 when Scapy is
-            missing, privileges are insufficient, the pcap file
-            cannot be opened or the capture fails.
+            missing, privileges are insufficient or the capture
+            fails. A pcap file that cannot be opened only disables
+            saving (a warning is printed).
         """
         if sniff is None:
             print("[ERROR] Scapy is not installed. "
@@ -158,12 +163,12 @@ class Sniffer:
             return 1
 
         if not has_root_privileges():
-            print("[ERROR] Root privileges required. Run with sudo.",
-                  file=sys.stderr)
-            return 1
+            print("[WARN] Not running as root: the capture will likely "
+                  "be refused. Run with sudo.", file=sys.stderr)
 
         if self.output_file and not self._open_pcap_writer():
-            return 1
+            print("[WARN] Capturing without saving packets.",
+                  file=sys.stderr)
 
         packet_handler = self._process_packet
         try:
@@ -172,7 +177,7 @@ class Sniffer:
         except KeyboardInterrupt:
             pass
         except PermissionError:
-            print("[ERROR] Permission denied. Run with sudo.",
+            print("[ERROR] Root privileges required. Run with sudo.",
                   file=sys.stderr)
             self._close_pcap_writer()
             return 1
