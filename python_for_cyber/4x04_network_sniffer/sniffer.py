@@ -32,64 +32,11 @@ except ImportError:
     PcapWriter = hexdump = None
 
 
-def get_protocol_name(packet) -> str:
-    """Identify the transport protocol carried by an IP packet.
-
-    Args:
-        packet: a Scapy packet that has an IP layer.
-
-    Returns:
-        "TCP", "UDP" or "ICMP", or an empty string if none matches.
-    """
-    if packet.haslayer(TCP):
-        return "TCP"
-    if packet.haslayer(UDP):
-        return "UDP"
-    if packet.haslayer(ICMP):
-        return "ICMP"
-    return ""
-
-
-def format_tcp(packet) -> str:
-    """Build the detailed line for a TCP packet.
-
-    Args:
-        packet: a Scapy packet that has both IP and TCP layers.
-
-    Returns:
-        A string like "[TCP] SRC:PORT -> DST:PORT | Flags: X".
-    """
-    ip_layer = packet[IP]
-    tcp_layer = packet[TCP]
-    sport = tcp_layer.sport
-    dport = tcp_layer.dport
-    flags = tcp_layer.flags
-    return (f"[TCP] {ip_layer.src}:{sport} -> {ip_layer.dst}:{dport}"
-            f" | Flags: {flags}")
-
-
-def describe_packet(packet) -> str:
-    """Build the one-line description of a packet.
-
-    Args:
-        packet: the Scapy packet handed over by sniff().
-
-    Returns:
-        "[TCP] SRC:PORT -> DST:PORT | Flags: X" for TCP,
-        "[PROTOCOL] SRC -> DST" for UDP and ICMP, or Scapy's
-        packet.summary() for any other packet.
-    """
-    if IP is not None and packet.haslayer(IP):
-        protocol = get_protocol_name(packet)
-        if protocol == "TCP":
-            return format_tcp(packet)
-        if protocol:
-            return f"[{protocol}] {packet[IP].src} -> {packet[IP].dst}"
-    return packet.summary()
-
-
 def packet_handler(packet) -> bool:
-    """Print the one-line description of a captured packet.
+    """Print Scapy's one-line summary of a captured packet.
+
+    Used as the fallback for packets that no protocol processor
+    handles (e.g. ARP, IPv6).
 
     Args:
         packet: the Scapy packet handed over by sniff().
@@ -99,11 +46,112 @@ def packet_handler(packet) -> bool:
         not be read (a warning is printed on stderr).
     """
     try:
-        print(describe_packet(packet), flush=True)
-    except (AttributeError, IndexError, TypeError):
+        print(packet.summary(), flush=True)
+    except (AttributeError, TypeError):
         print("[WARN] Unreadable packet skipped.", file=sys.stderr)
         return False
     return True
+
+
+class PacketProcessor:
+    """Base class for protocol processors (Strategy pattern).
+
+    Each subclass handles one protocol carried over IP: it names
+    the Scapy layer it handles and implements process().
+
+    Attributes:
+        layer: the Scapy layer class this processor handles.
+    """
+
+    layer = None
+
+    def matches(self, packet) -> bool:
+        """Tell whether this processor handles the given packet.
+
+        Args:
+            packet: a Scapy packet that has an IP layer.
+
+        Returns:
+            True if the packet carries this processor's layer.
+        """
+        return self.layer is not None and packet.haslayer(self.layer)
+
+    def process(self, packet) -> str:
+        """Describe a packet and print the result.
+
+        Args:
+            packet: a Scapy packet carrying this processor's layer.
+
+        Returns:
+            The line printed on stdout.
+
+        Raises:
+            NotImplementedError: subclasses must override it.
+        """
+        raise NotImplementedError("process() must be implemented")
+
+
+class TCPProcessor(PacketProcessor):
+    """Describe TCP packets with ports and flags."""
+
+    layer = TCP
+
+    def process(self, packet) -> str:
+        """Print "[TCP] SRC:PORT -> DST:PORT | Flags: X".
+
+        Args:
+            packet: a Scapy packet with IP and TCP layers.
+
+        Returns:
+            The line printed on stdout.
+        """
+        ip_layer = packet[IP]
+        tcp_layer = packet[TCP]
+        sport = tcp_layer.sport
+        dport = tcp_layer.dport
+        flags = tcp_layer.flags
+        line = (f"[TCP] {ip_layer.src}:{sport} -> {ip_layer.dst}:{dport}"
+                f" | Flags: {flags}")
+        print(line, flush=True)
+        return line
+
+
+class UDPProcessor(PacketProcessor):
+    """Describe UDP packets."""
+
+    layer = UDP
+
+    def process(self, packet) -> str:
+        """Print "[UDP] SRC -> DST".
+
+        Args:
+            packet: a Scapy packet with IP and UDP layers.
+
+        Returns:
+            The line printed on stdout.
+        """
+        line = f"[UDP] {packet[IP].src} -> {packet[IP].dst}"
+        print(line, flush=True)
+        return line
+
+
+class ICMPProcessor(PacketProcessor):
+    """Describe ICMP packets."""
+
+    layer = ICMP
+
+    def process(self, packet) -> str:
+        """Print "[ICMP] SRC -> DST".
+
+        Args:
+            packet: a Scapy packet with IP and ICMP layers.
+
+        Returns:
+            The line printed on stdout.
+        """
+        line = f"[ICMP] {packet[IP].src} -> {packet[IP].dst}"
+        print(line, flush=True)
+        return line
 
 
 def has_root_privileges() -> bool:
@@ -126,6 +174,7 @@ class Sniffer:
         filter_str: BPF filter string, or None for no filter.
         output_file: pcap path to append packets to, or None.
         verbose: when True, print a hex dump after each line.
+        processors: PacketProcessor instances, tried in order.
     """
 
     def __init__(self, interface, filter_str, output_file,
@@ -143,6 +192,7 @@ class Sniffer:
         self.output_file = output_file
         self.verbose = verbose
         self.pcap_writer = None
+        self.processors = [TCPProcessor(), UDPProcessor(), ICMPProcessor()]
 
     def start(self) -> int:
         """Check the environment, then sniff until Ctrl+C.
@@ -192,6 +242,9 @@ class Sniffer:
     def _process_packet(self, packet) -> None:
         """sniff() callback: save, describe and dump one packet.
 
+        The description is delegated to the matching protocol
+        processor (see get_processor()).
+
         Args:
             packet: the Scapy packet handed over by sniff().
 
@@ -205,13 +258,50 @@ class Sniffer:
                     AttributeError) as error:
                 print(f"[WARN] Packet not saved: {error}",
                       file=sys.stderr)
-        if not packet_handler(packet):
+        if not self._dispatch(packet):
             return
         if self.verbose and hexdump is not None:
             try:
                 hexdump(packet)
             except (TypeError, ValueError) as error:
                 print(f"[WARN] Hex dump failed: {error}", file=sys.stderr)
+
+    def get_processor(self, packet):
+        """Find the processor that handles a packet.
+
+        Args:
+            packet: the Scapy packet handed over by sniff().
+
+        Returns:
+            The matching PacketProcessor, or None if the packet is
+            not IP or carries no supported protocol.
+        """
+        if IP is None or not packet.haslayer(IP):
+            return None
+        for processor in self.processors:
+            if processor.matches(packet):
+                return processor
+        return None
+
+    def _dispatch(self, packet) -> bool:
+        """Delegate a packet to its processor, or fall back.
+
+        Args:
+            packet: the Scapy packet handed over by sniff().
+
+        Returns:
+            True if a line was printed, False if the packet could
+            not be read (a warning is printed on stderr).
+        """
+        try:
+            processor = self.get_processor(packet)
+            if processor is None:
+                return packet_handler(packet)
+            processor.process(packet)
+        except (AttributeError, IndexError, TypeError):
+            print("[WARN] Unreadable packet skipped.", file=sys.stderr)
+            return False
+        return True
 
     def _open_pcap_writer(self) -> bool:
         """Open a buffered pcap writer appending to output_file.
