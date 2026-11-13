@@ -6,6 +6,7 @@ summary of each one on stdout. Errors are reported on stderr
 with a user-friendly message, never with a raw traceback.
 """
 
+import argparse
 import os
 import sys
 
@@ -18,6 +19,11 @@ try:
     from scapy.all import IP, TCP, UDP, ICMP
 except ImportError:
     IP = TCP = UDP = ICMP = None
+
+try:
+    from scapy.error import Scapy_Exception
+except ImportError:
+    Scapy_Exception = OSError
 
 
 def get_protocol_name(packet) -> str:
@@ -96,8 +102,29 @@ def has_root_privileges() -> bool:
         return False
 
 
+def parse_arguments() -> argparse.Namespace:
+    """Parse the command line options.
+
+    Returns:
+        A namespace with "interface" (str or None) and
+        "filter" (BPF string or None).
+    """
+    parser = argparse.ArgumentParser(
+        prog="PySniffer",
+        description="Capture and dissect live network packets."
+    )
+    parser.add_argument("-i", "--interface",
+                        help="network interface to sniff on (e.g. eth0)")
+    parser.add_argument("-f", "--filter",
+                        help='BPF filter string (e.g. "tcp port 80")')
+    return parser.parse_args()
+
+
 def main() -> int:
     """Entry point: check the environment, then sniff forever.
+
+    The -i/--interface and -f/--filter options are passed to
+    sniff() as iface and filter (BPF syntax).
 
     The capture runs until the user presses Ctrl+C, then the
     script prints "[INFO] Stopping capture..." and exits cleanly.
@@ -107,6 +134,7 @@ def main() -> int:
         insufficient or the capture fails.
     """
     print("[INFO] PySniffer initialized.", flush=True)
+    args = parse_arguments()
 
     if sniff is None:
         print("[ERROR] Scapy is not installed. "
@@ -119,14 +147,15 @@ def main() -> int:
         return 1
 
     try:
-        sniff(prn=packet_handler, store=False)
+        sniff(prn=packet_handler, iface=args.interface,
+              filter=args.filter, store=False)
     except KeyboardInterrupt:
         pass
     except PermissionError:
         print("[ERROR] Permission denied. Run with sudo.",
               file=sys.stderr)
         return 1
-    except OSError as error:
+    except (OSError, ValueError, Scapy_Exception) as error:
         print(f"[ERROR] Capture failed: {error}", file=sys.stderr)
         return 1
     print("\n[INFO] Stopping capture...", flush=True)
