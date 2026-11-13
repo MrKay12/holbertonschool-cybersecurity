@@ -32,9 +32,9 @@ ICMP = getattr(scapy_all, "ICMP", None)
 Raw = getattr(scapy_all, "Raw", None)
 
 try:
-    from scapy.error import Scapy_Exception
+    from scapy.error import Scapy_Exception as ScapyException
 except ImportError:
-    Scapy_Exception = OSError
+    ScapyException = OSError
 
 try:
     from scapy.utils import PcapWriter, hexdump
@@ -42,7 +42,7 @@ except ImportError:
     PcapWriter = hexdump = None
 
 
-def packet_handler(packet) -> bool:
+def print_summary(packet) -> bool:
     """Print Scapy's one-line summary of a captured packet.
 
     Used as the fallback for packets that no protocol processor
@@ -283,7 +283,7 @@ def has_root_privileges() -> bool:
         return False
 
 
-class Sniffer:
+class Sniffer:  # pylint: disable=too-many-instance-attributes
     """Live packet sniffer: capture, describe, dump and save packets.
 
     Attributes:
@@ -355,7 +355,15 @@ class Sniffer:
                   file=sys.stderr)
 
         self._start_worker()
-        packet_handler = self._enqueue_packet
+
+        def packet_handler(packet) -> None:
+            """sniff() callback (capture thread): queue the packet.
+
+            Args:
+                packet: the Scapy packet handed over by sniff().
+            """
+            self._enqueue_packet(packet)
+
         try:
             sniff(prn=packet_handler, iface=self.interface,
                   filter=self.filter_str, store=False)
@@ -367,7 +375,7 @@ class Sniffer:
             self._stop_worker()
             self._close_pcap_writer()
             return 1
-        except (OSError, ValueError, Scapy_Exception) as error:
+        except (OSError, ValueError, ScapyException) as error:
             print(f"[ERROR] Capture failed: {error}", file=sys.stderr)
             self._stop_worker()
             self._close_pcap_writer()
@@ -417,7 +425,8 @@ class Sniffer:
                 if packet is None:
                     return
                 self._process_packet(packet)
-            except Exception as error:  # keep the worker alive
+            except (AttributeError, IndexError, KeyError, TypeError,
+                    ValueError, OSError) as error:
                 print(f"[WARN] Packet processing failed: {error}",
                       file=sys.stderr)
             finally:
@@ -524,7 +533,7 @@ class Sniffer:
             processor = self.get_processor(packet)
             self.update_stats(processor)
             if processor is None:
-                return packet_handler(packet)
+                return print_summary(packet)
             processor.process(packet)
         except (AttributeError, IndexError, TypeError):
             print("[WARN] Unreadable packet skipped.", file=sys.stderr)
