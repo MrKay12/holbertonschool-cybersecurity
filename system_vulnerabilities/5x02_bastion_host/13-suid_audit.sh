@@ -29,11 +29,17 @@ category() {
     fi
 }
 
-# scan PERM: list files with that permission bit, skipping virtual filesystems
-scan() {
-    find / \( -path /proc -o -path /sys -o -path /dev -o -path /run \
-              -o -path /snap -o -path /var/lib/docker \) -prune \
-         -o -type f -perm "$1" -print 2>/dev/null | sort
+# Virtual / irrelevant filesystems to skip
+PRUNE='( -path /proc -o -path /sys -o -path /dev -o -path /run -o -path /snap -o -path /var/lib/docker ) -prune -o'
+
+# List SUID binaries
+scan_suid() {
+    find / $PRUNE -type f -perm -4000 -print 2>/dev/null | sort
+}
+
+# List SGID binaries
+scan_sgid() {
+    find / $PRUNE -type f -perm -2000 -print 2>/dev/null | sort
 }
 
 mkdir -p "$OUTDIR"
@@ -45,13 +51,13 @@ mkdir -p "$OUTDIR"
     while IFS= read -r f; do
         cat=$(category "$f")
         printf "  %-29s %-8s %s\n" "$f" "$(stat -c '%U' "$f")" "$cat"
-    done < <(scan -4000)
+    done < <(scan_suid)
     echo
     echo "SGID binaries (run as group):"
     while IFS= read -r f; do
         cat=$(category "$f")
         printf "  %-29s %-8s %s\n" "$f" "$(stat -c '%G' "$f")" "$cat"
-    done < <(scan -2000)
+    done < <(scan_sgid)
 } > "$REPORT.tmp"
 
 SUID_COUNT=$(sed -n '/^SUID/,/^$/p' "$REPORT.tmp" | grep -c '^  /')
