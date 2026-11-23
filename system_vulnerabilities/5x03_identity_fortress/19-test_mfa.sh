@@ -106,7 +106,7 @@ methods=$(sshd_opt authenticationmethods)
 kbd=$(sshd_opt kbdinteractiveauthentication)
 [ -z "$kbd" ] && kbd=$(sshd_opt challengeresponseauthentication)
 kbd=$(echo "$kbd" | tr 'A-Z' 'a-z')
-if [ "$methods" = "publickey,keyboard-interactive" ]; then
+if [ "AuthenticationMethods $methods" = "AuthenticationMethods publickey,keyboard-interactive" ]; then
     ok "AuthenticationMethods: $methods"
 else
     bad "AuthenticationMethods: ${methods:-any} (expected publickey,keyboard-interactive)"
