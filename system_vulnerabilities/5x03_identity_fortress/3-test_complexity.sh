@@ -2,68 +2,90 @@
 # 3-test_complexity.sh
 # Verify that the pam_pwquality policy really rejects weak passwords.
 #
-# Uses pwscore (libpwquality-tools): it runs the same libpwquality checks
-# and reads the same /etc/security/pwquality.conf as pam_pwquality does at
-# passwd time, without changing any account's password.
+# Each password is tried with the real passwd command, run as a throwaway
+# user so it goes through the full PAM password stack (root would bypass
+# pam_pwquality). The throwaway user is deleted on exit; no real account's
+# password is ever touched.
 #
-# Usage: ./3-test_complexity.sh [-v]
-#   -v  also show libpwquality's own message for each test
+# The test user is "audit", so "auditor2024" contains its username.
+#
+# Usage: sudo ./3-test_complexity.sh [-v]
+#   -v  also show the message passwd/PAM printed for each test
 
-TEST_USER="auditor"
+TEST_USER="audit"
 VERBOSE=0
 [ "$1" = "-v" ] && VERBOSE=1
 
-if ! command -v pwscore >/dev/null; then
-    echo "Error: pwscore not found (run 2-password_complexity.sh first," \
-         "or: sudo apt-get install libpwquality-tools)" >&2
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Error: run with sudo (sudo $0)" >&2
+    exit 1
+fi
+if id "$TEST_USER" >/dev/null 2>&1; then
+    echo "Error: user '$TEST_USER' already exists; refusing to touch it" >&2
     exit 1
 fi
 
-# password | description | expected (REJECTED/ACCEPTED) | reason tested
-TESTS=(
-    "password|common word|REJECTED|Dictionary word"
-    "Password123|no special char|REJECTED|Missing special character"
-    "Ab1!|too short|REJECTED|Minimum length not met"
-    "auditor2024|contains username|REJECTED|Contains username"
-    "Str0ng!P@ssw0rd#2024|valid|ACCEPTED|Meets all requirements"
-)
+# Test passwords and, at the same index, description / expected / reason
+PASSWORDS=("password" "Password123" "Ab1!" "auditor2024" "Str0ng!P@ssw0rd#2024")
+DESCS=("common word" "no special char" "too short" "contains username" "valid")
+EXPECTED=("REJECTED" "REJECTED" "REJECTED" "REJECTED" "ACCEPTED")
+REASONS=("Dictionary word" "Missing special character" "Minimum length not met" \
+         "Contains username" "Meets all requirements")
 
-echo "=== Password Complexity Testing ==="
+# ---- Throwaway test user ---------------------------------------------------
+cleanup() { userdel -r "$TEST_USER" >/dev/null 2>&1; }
+trap cleanup EXIT
+
+# Random initial password (set by root, so not subject to the policy)
+OLD_PW="Init!$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)9a"
+useradd -m -s /bin/bash "$TEST_USER" || { echo "Error: cannot create $TEST_USER" >&2; exit 1; }
+echo "$TEST_USER:$OLD_PW" | chpasswd
+chage -m 0 "$TEST_USER"    # allow an immediate password change
+
+# Try to change the password as the user: old, new, new on stdin.
+# Exit 0 means PAM accepted the new password.
+try_passwd() {
+    printf '%s\n%s\n%s\n' "$OLD_PW" "$1" "$1" \
+        | timeout 15 su -s /bin/sh "$TEST_USER" -c passwd 2>&1
+}
+
+echo '=== Password Complexity Testing ==='
 echo
 echo "Testing password policy enforcement..."
 echo
 
-n=0
+i=0
 failed=0
-for t in "${TESTS[@]}"; do
-    IFS='|' read -r pw desc expected reason <<< "$t"
-    n=$((n + 1))
-
-    # pwscore exits 0 and prints a score when the password passes
-    msg=$(printf '%s\n' "$pw" | pwscore "$TEST_USER" 2>&1)
-    if [ $? -eq 0 ]; then result="ACCEPTED"; else result="REJECTED"; fi
-
-    echo "Test $n: \"$pw\" ($desc)"
-    if [ "$result" = "$expected" ]; then
-        echo "  Result: $result ✓"
-        echo "  Reason: $reason"
+for pw in "${PASSWORDS[@]}"; do
+    msg=$(try_passwd "$pw")
+    if [ $? -eq 0 ]; then
+        result="ACCEPTED"
+        OLD_PW="$pw"            # the change went through
     else
-        echo "  Result: $result ✗ (expected $expected)"
-        echo "  Reason: policy does not enforce: $reason"
+        result="REJECTED"
+    fi
+
+    echo "Test $((i + 1)): \"$pw\" (${DESCS[$i]})"
+    if [ "$result" = "${EXPECTED[$i]}" ]; then
+        echo "  Result: $result ✓"
+        echo "  Reason: ${REASONS[$i]}"
+    else
+        echo "  Result: $result ✗ (expected ${EXPECTED[$i]})"
+        echo "  Reason: policy does not enforce: ${REASONS[$i]}"
         failed=$((failed + 1))
     fi
     if [ "$VERBOSE" -eq 1 ]; then
-        echo "  pwquality: $(echo "$msg" | grep -v '^Password quality check failed:' \
-                             | sed 's/^[[:space:]]*//' | head -1)"
+        echo "  passwd: $(echo "$msg" | grep -iE 'BAD PASSWORD|updated|error|fail' | head -1)"
     fi
     echo
+    i=$((i + 1))
 done
 
 if [ "$failed" -eq 0 ]; then
     echo "All complexity tests: PASSED"
     echo "Password policy is enforced correctly."
 else
-    echo "Complexity tests: $failed of $n FAILED"
+    echo "Complexity tests: $failed of ${#PASSWORDS[@]} FAILED"
     echo "Password policy is NOT enforced correctly (run 2-password_complexity.sh)."
     exit 1
 fi
