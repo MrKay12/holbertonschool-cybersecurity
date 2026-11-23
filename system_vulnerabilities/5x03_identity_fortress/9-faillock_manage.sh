@@ -101,7 +101,7 @@ elif [ "$1" = "show" ]; then
     check_user "$user"
     echo "=== Faillock Details: $user ==="
     echo
-    recs=$(faillock --user $user 2>/dev/null | parse_records)
+    recs=$(faillock --user "$2" 2>/dev/null | parse_records)
     echo "Recent failures:"
     if [ -z "$recs" ]; then
         echo "  None"
@@ -131,9 +131,9 @@ elif [ "$1" = "show" ]; then
 elif [ "$1" = "reset" ]; then
     user="$2"
     check_user "$user"
-    faillock --user $user --reset
+    faillock --user "$2" --reset
     # Verify: no valid failure left
-    if [ -z "$(faillock --user $user 2>/dev/null | parse_records | grep '|V$')" ]; then
+    if [ -z "$(faillock --user "$2" 2>/dev/null | parse_records | grep '|V$')" ]; then
         echo "Account $user: Lock cleared"
     else
         echo "Account $user: reset FAILED" >&2
