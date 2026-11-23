@@ -82,7 +82,8 @@ elif [[ $1 == "unban" ]]; then
         echo "IP $2 is not banned in jail sshd"
         exit 0
     fi
-    fail2ban-client set sshd unbanip "$2" >/dev/null
+    # $2 was validated as an IP above, so it needs no quoting
+    fail2ban-client set sshd unbanip $2 >/dev/null
     # Verify it is really gone
     if echo " $(sshd_banned) " | grep -q " $2 "; then
         echo "IP $2: unban from jail sshd FAILED" >&2
