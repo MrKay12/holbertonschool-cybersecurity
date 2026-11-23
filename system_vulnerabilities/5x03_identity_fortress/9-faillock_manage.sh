@@ -18,6 +18,9 @@ usage() {
 }
 
 [ $# -ge 1 ] || usage
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    usage
+fi
 if [ "$(id -u)" -ne 0 ]; then
     echo "Error: run with sudo (sudo $0 $*)" >&2
     exit 1
@@ -79,7 +82,7 @@ check_user() {
     fi
 }
 
-if [ "$1" = "status" ]; then
+if [[ $1 = "status" ]]; then
     echo "=== Faillock Status ==="
     echo
     echo "Locked accounts:"
@@ -96,7 +99,7 @@ if [ "$1" = "status" ]; then
         fi
     done
     [ "$found" -eq 0 ] && echo "  None"
-elif [ "$1" = "show" ]; then
+elif [[ $1 = "show" ]]; then
     user="$2"
     check_user "$user"
     echo "=== Faillock Details: $user ==="
@@ -128,7 +131,7 @@ elif [ "$1" = "show" ]; then
     else
         echo "Status: NOT LOCKED ($fails/$DENY failures)"
     fi
-elif [ "$1" = "reset" ]; then
+elif [[ $1 = "reset" ]]; then
     user="$2"
     check_user "$user"
     faillock --user "$2" --reset
