@@ -29,6 +29,7 @@ account lifecycle) gets overhauled.
 | `10-configure_fail2ban.sh` | Installs fail2ban (same apt lock/repair handling as task 2), writes `/etc/fail2ban/jail.local` with an `[sshd]` jail (`maxretry = 5`, `findtime = 600`, `bantime = 3600`), validates it with `fail2ban-client -t`, starts the service and shows the jail status. Uses `/var/log/auth.log`, or `backend = systemd` when that file does not exist. Localhost and the admin's SSH client IP are in `ignoreip` |
 | `11-fail2ban_manage.sh` | `status` shows the service, jail list and `sshd` banned/total/failed counts; `banned` lists the `sshd` jail's banned IPs with ban and expiry times (`get sshd banip --with-time`, plain list on older fail2ban); `unban <ip>` validates the IP, runs `fail2ban-client set sshd unbanip` and verifies it is gone |
 | `12-generate_ssh_key.sh` | Run as the key owner (no sudo). Generates `~/.ssh/id_ed25519` with `ssh-keygen -t ed25519 -a 100` (passphrase prompted), sets `~/.ssh` 700, private key 600, public key 644, and prints the fingerprint and public key. Never overwrites an existing key |
+| `13-deploy_ssh_key.sh` | `./13-deploy_ssh_key.sh "<public key>"` validates the key with `ssh-keygen -lf`, creates `~/.ssh` (700), appends the key to `authorized_keys` (600) unless the same key is already there, then verifies key count, permissions and ownership |
 
 ## Emergency recovery
 
