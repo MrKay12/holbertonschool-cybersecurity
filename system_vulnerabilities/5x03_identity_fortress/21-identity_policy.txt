@@ -1,0 +1,310 @@
+===============================================================================
+                     NOVATECH SOLUTIONS
+                 IDENTITY SECURITY POLICY
+===============================================================================
+
+Document ID     : SEC-POL-IAM-001
+Version         : 1.0
+Classification  : Internal
+Owner           : Chief Information Security Officer (CISO)
+Prepared by     : CyberShield Consulting, Security Engineering
+Approved by     : CISO (signature on file)
+Review cycle    : Every 12 months, and after any identity-related incident
+
+-------------------------------------------------------------------------------
+0. PURPOSE, SCOPE AND DEFINITIONS
+-------------------------------------------------------------------------------
+
+0.1 Purpose
+  A recent penetration test showed that three accounts on the production
+  bastion could be taken over with an automated password-guessing tool in
+  under 20 minutes. This policy sets the minimum identity and authentication
+  controls that prevent a stolen or guessed password from being enough to
+  access NovaTech systems.
+
+0.2 Scope
+  - All Linux servers operated by NovaTech, starting with the DMZ bastion
+    novatech-prod-03, and every account on them: employees, contractors,
+    administrators and service (non-human) accounts.
+  - Exceptions are allowed only through section 8.
+
+0.3 Wording
+  "SHALL" / "SHALL NOT" = mandatory.  "SHOULD" = expected unless a
+  documented reason exists.
+
+0.4 Roles
+  CISO                 owns this policy, approves exceptions.
+  System administrators  implement and monitor the controls.
+  Managers             approve access requests and access reviews.
+  HR                   notifies joiners, movers and leavers.
+  Users                protect their credentials and devices, report loss.
+
+
+-------------------------------------------------------------------------------
+1. PASSWORD POLICY
+-------------------------------------------------------------------------------
+
+Passwords remain in use for local console login, sudo and password
+changes. They SHALL NOT be accepted for SSH (section 3).
+
+1.1 Complexity (enforced by pam_pwquality)
+  Every new password SHALL:
+  - be at least 12 characters long                       (minlen = 12)
+  - contain at least 1 uppercase, 1 lowercase, 1 digit and 1 special
+    character                       (ucredit/lcredit/dcredit/ocredit = -1)
+  - not contain the username                              (usercheck = 1)
+  - differ from the previous password by at least 3 characters (difok = 3)
+  - not be a dictionary word or a known weak password (dictionary check)
+  Users SHOULD prefer long passphrases (4+ unrelated words), in line with
+  NIST SP 800-63B, which values length over character variety.
+
+1.2 History (enforced by pam_pwhistory)
+  - The last 5 passwords SHALL NOT be reused             (remember = 5)
+  - Old password hashes are stored root-only in /etc/security/opasswd.
+
+1.3 Aging (enforced by /etc/login.defs and chage)
+  - Maximum age: 90 days                              (PASS_MAX_DAYS 90)
+  - Minimum age: 1 day, to stop cycling through the
+    history in one sitting                             (PASS_MIN_DAYS 1)
+  - Expiry warning: 14 days before                    (PASS_WARN_AGE 14)
+  Note: NIST SP 800-63B advises against routine rotation. The 90-day rule
+  is kept because NovaTech's compliance frameworks require it. It will be
+  reconsidered when those frameworks allow.
+
+1.4 Compromised passwords
+  - A password known or suspected to be compromised (pentest finding,
+    breach list, phishing) SHALL be changed at next login: the password is
+    expired immediately (passwd -e).
+  - Passwords SHALL NOT be shared, written down unprotected, or sent by
+    email or chat.
+
+1.5 Storage
+  Passwords SHALL be stored only as salted, slow hashes (yescrypt or
+  SHA-512 crypt). Plain text or reversible storage is forbidden.
+
+
+-------------------------------------------------------------------------------
+2. ACCOUNT LOCKOUT POLICY
+-------------------------------------------------------------------------------
+
+2.1 Per-account lockout (enforced by pam_faillock)
+  - An account SHALL be locked after 5 failed authentication attempts
+    within 15 minutes                       (deny = 5, fail_interval = 900)
+  - The lock lasts 15 minutes, then is lifted automatically
+                                                        (unlock_time = 900)
+  - root is not locked by pam_faillock, so the console remains an
+    emergency path. Network login as root is forbidden (section 3).
+
+2.2 Per-source banning (enforced by fail2ban)
+  - A source IP with 5 failed SSH logins within 10 minutes SHALL be
+    banned for 1 hour   (maxretry = 5, findtime = 600, bantime = 3600)
+  - Administrators' management addresses MAY be whitelisted (ignoreip)
+    with CISO approval.
+
+2.3 Unlocking
+  - Early unlock or unban SHALL be done by an administrator after
+    confirming the user's identity, and logged in a ticket.
+  - Repeated lockouts of one account or many accounts from one source
+    SHALL be investigated as a possible attack.
+
+2.4 Rationale
+  Lockout and banning are complementary: lockout protects each account
+  against guessing; banning stops one source from trying many accounts.
+  Thresholds are moderate on purpose, so attackers cannot lock out real
+  users at will (denial of service).
+
+
+-------------------------------------------------------------------------------
+3. SSH ACCESS POLICY
+-------------------------------------------------------------------------------
+
+3.1 Authentication
+  - SSH password authentication SHALL be disabled
+                                          (PasswordAuthentication no)
+  - SSH SHALL require public-key authentication AND a second factor
+    (section 4)    (AuthenticationMethods publickey,keyboard-interactive)
+  - Direct root login over SSH SHALL be disabled.
+
+3.2 Keys
+  - Keys SHALL be ED25519 (preferred) or RSA of at least 3072 bits.
+  - Private keys SHALL be protected by a passphrase, stay on the owner's
+    device, and SHALL NOT be shared or copied to servers.
+  - Private key files SHALL be mode 600, ~/.ssh mode 700,
+    authorized_keys mode 600 and owned by the user.
+  - Each person SHALL have their own key. Shared keys are forbidden.
+  - Public keys are deployed only through an approved request
+    (section 5.1). Unknown keys found in authorized_keys SHALL be removed
+    and investigated.
+
+3.3 Key review and rotation
+  - authorized_keys files SHALL be reviewed quarterly with the access
+    review (section 5.3).
+  - Keys SHALL be rotated at least every 2 years, and immediately when a
+    device is lost, stolen or decommissioned.
+
+3.4 Session security
+  - Logins SHALL be logged (source IP, user, method) and logs kept for at
+    least 1 year.
+  - A legal warning banner SHALL be displayed before login.
+
+
+-------------------------------------------------------------------------------
+4. MFA REQUIREMENTS
+-------------------------------------------------------------------------------
+
+4.1 Requirement
+  - All interactive SSH access to production servers SHALL use two
+    factors: the user's SSH private key (something you have: laptop) and
+    a TOTP code (something you have: phone / authenticator app).
+  - Possession of a stolen key alone, or a stolen TOTP device alone, SHALL
+    NOT be enough to log in.
+
+4.2 TOTP settings (pam_google_authenticator)
+  - Time-based codes (RFC 6238), 30-second step
+  - A code SHALL NOT be accepted twice                (disallow reuse)
+  - At most 3 login attempts per 30 seconds           (rate limit)
+  - Window of 3 codes to tolerate clock skew          (window size 3)
+  - 5 single-use emergency scratch codes per user
+
+4.3 Enrollment
+  - New users SHALL enroll before their SSH access is activated.
+  - The secret / QR code SHALL be shown only to the user (in person or over
+    an encrypted screen share), never sent by email or chat.
+  - Secret files (~/.google_authenticator) SHALL be readable only by
+    their owner (mode 400 or 600).
+  - Scratch codes SHALL be stored offline (sealed paper or password
+    manager), never on the same device as the authenticator app.
+
+4.4 Rollout and exceptions
+  - During the transition, users without a TOTP secret MAY be allowed to
+    log in with their key only (nullok) for at most 30 days, as tracked
+    by Security Engineering.
+  - Non-interactive service accounts are covered by section 5.5.
+
+4.5 Verification
+  - MFA enforcement SHALL be tested after every change to SSH or PAM, and
+    at least quarterly (19-test_mfa.sh).
+
+
+-------------------------------------------------------------------------------
+5. ACCOUNT LIFECYCLE
+-------------------------------------------------------------------------------
+
+5.1 Creation (joiner)
+  - Every account SHALL be requested in a ticket by the user's manager,
+    stating the role, the systems and the privileges needed.
+  - Each person SHALL have a unique, named account. Shared or generic
+    human accounts are forbidden.
+  - Least privilege: sudo rights only for approved administrators, through
+    a named group, never by adding users directly to sudoers.
+  - The initial password SHALL be random, delivered through a separate
+    channel, and expired so it must be changed at first login.
+  - SSH key deployment and TOTP enrollment (section 4.3) SHALL be
+    completed before SSH access is granted.
+  - Aging defaults (section 1.3) apply automatically to new accounts.
+
+5.2 Modification (mover)
+  - Any privilege change (e.g. sudo access) SHALL be requested and
+    approved like a creation.
+  - When a user changes role, rights no longer needed SHALL be removed
+    within 5 working days.
+
+5.3 Periodic review
+  - Every quarter, managers SHALL confirm each of their team's accounts
+    and privileges, and administrators SHALL review sudo membership and
+    authorized_keys files.
+  - Accounts unused for 90 days SHALL be disabled, then removed after a
+    further 90 days unless the manager justifies them.
+
+5.4 Termination (leaver)
+  HR SHALL notify IT on or before the last working day. The same day,
+  administrators SHALL:
+  - lock the account and expire it  (usermod -L, chage -E 0)
+  - remove its SSH keys, TOTP secret and sudo/group memberships
+  - end its active sessions and processes
+  - review its cron jobs and files, and transfer ownership as needed
+  For an involuntary termination, these steps SHALL be done before the
+  person is told. The account (home directory archived) SHALL be deleted
+  after 90 days.
+
+5.5 Service (non-human) accounts
+  - SHALL have a named human owner and a documented purpose.
+  - SHALL NOT have an interactive shell (nologin) unless SSH access is
+    required. In that case: key-only, restricted in authorized_keys to the
+    source address and command needed (from=, command=, no-pty).
+  - SHALL NOT have a usable password, and are exempt from password aging.
+  - TOTP exemptions for service accounts SHALL be documented exceptions
+    (section 8) and reviewed quarterly.
+
+
+-------------------------------------------------------------------------------
+6. EMERGENCY ACCESS PROCEDURES (SUMMARY)
+-------------------------------------------------------------------------------
+
+Full procedure: 20-emergency_procedures.txt. Key rules:
+
+6.1 Principles
+  - MFA SHALL NEVER be disabled globally. Bypasses are per user, limited
+    to 24 hours, and still require the SSH key.
+  - Identity SHALL be verified out-of-band before any change (callback on
+    the directory number, manager approval). Urgency does not waive it.
+  - Two people: one approves, another performs the change.
+
+6.2 Situations covered
+  - Lost phone / TOTP device: revoke the secret, use a scratch code or a
+    time-limited bypass, re-enroll on a new device.
+  - Lost laptop / SSH key: remove the key from authorized_keys, deploy a
+    new one.
+  - Lockout after failed attempts: unlock (faillock) or unban (fail2ban).
+  - No administrator can log in: another administrator, then the
+    hypervisor console, then configuration backups, then recovery mode.
+  - Break-glass account: credentials sealed in the safe (two-person
+    access); every use is an incident followed by credential rotation.
+
+6.3 Audit trail
+  Every emergency access SHALL have a ticket (requester, approver,
+  performer, verification, reason, times), be logged, be closed within
+  24 hours (bypass removed, controls re-tested, exposed credentials
+  rotated) and be reviewed by the security team.
+
+
+-------------------------------------------------------------------------------
+7. MONITORING AND COMPLIANCE
+-------------------------------------------------------------------------------
+
+  - Controls SHALL be audited after any change and at least quarterly.
+    Evidence: 1-pam_audit.sh (configuration audit), 3-test_complexity.sh,
+    4-password_history.sh, 8-configure_faillock.sh (lockout test),
+    11-fail2ban_manage.sh status, 19-test_mfa.sh.
+  - Authentication logs (SSH, sudo, faillock, fail2ban) SHALL be kept for
+    at least 1 year and protected from modification.
+  - Configuration backups SHALL be taken before every change to PAM or
+    SSH (.bak / .backup files) to allow rollback.
+  - Violations of this policy SHALL be reported to the CISO and may lead to
+    access removal and disciplinary action.
+
+
+-------------------------------------------------------------------------------
+8. EXCEPTIONS
+-------------------------------------------------------------------------------
+
+  Any deviation from a SHALL requirement needs a written exception
+  approved by the CISO. Each exception records the system, accounts,
+  reason, compensating controls and an expiry date (maximum 12 months).
+  Exceptions are reviewed at every policy review.
+
+
+-------------------------------------------------------------------------------
+9. REFERENCES
+-------------------------------------------------------------------------------
+
+  - NIST SP 800-63B, Digital Identity Guidelines: Authentication and
+    Lifecycle Management
+  - RFC 6238, TOTP: Time-Based One-Time Password Algorithm
+  - CIS Benchmark for Ubuntu Linux (PAM, SSH and account sections)
+  - NovaTech 5x02 bastion hardening report (24-hardening_report.md)
+  - 20-emergency_procedures.txt (emergency access runbook)
+
+===============================================================================
+                              END OF DOCUMENT
+===============================================================================
