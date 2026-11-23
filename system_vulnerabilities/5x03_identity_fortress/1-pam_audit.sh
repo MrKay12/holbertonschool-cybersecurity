@@ -9,16 +9,16 @@ LOGIN_DEFS="/etc/login.defs"
 SSHD_CONFIG="/etc/ssh/sshd_config"
 WEAK=0
 
-# Short description for well-known PAM modules
+# Short description for security-relevant PAM modules.
+# Plumbing modules (pam_permit, pam_cap, pam_gnome_keyring, ...) return
+# nothing and are left out of the report.
 describe() {
     local file="$1" mod="$2"
     case "$mod" in
         pam_unix.so)
             if [ "$file" = "common-password" ]; then echo "Password change handling"
             else echo "Standard password authentication"; fi ;;
-        pam_deny.so)       echo "Fallback deny" ;;
-        pam_permit.so)     echo "Stack completion (permit)" ;;
-        pam_cap.so)        echo "Capability assignment" ;;
+        pam_deny.so)       [ "$file" = "common-auth" ] && echo "Fallback deny" ;;
         pam_faillock.so)   echo "Account lockout after failed attempts" ;;
         pam_tally2.so)     echo "Legacy failed-login counter" ;;
         pam_pwquality.so)  echo "Password complexity enforcement" ;;
@@ -27,12 +27,18 @@ describe() {
         pam_sss.so)        echo "SSSD (directory) authentication" ;;
         pam_krb5.so)       echo "Kerberos authentication" ;;
         pam_ldap.so)       echo "LDAP authentication" ;;
-        pam_systemd.so)    echo "systemd session registration" ;;
-        pam_mkhomedir.so)  echo "Home directory creation" ;;
         pam_google_authenticator.so|pam_oath.so|pam_u2f.so|pam_duo.so|pam_yubico.so)
                            echo "Multi-factor authentication" ;;
-        *)                 echo "Additional module" ;;
     esac
+}
+
+# Print "  module: description" for each security-relevant module of a file
+report_modules() {
+    local file="$1" name="$2" m d
+    for m in $(modules "$file"); do
+        d=$(describe "$name" "$m")
+        [ -n "$d" ] && echo "  $m: $d"
+    done
 }
 
 # Active (non-comment) lines of a PAM file
@@ -48,9 +54,7 @@ echo
 f="$PAM_DIR/common-auth"
 echo "$f:"
 if [ -r "$f" ]; then
-    for m in $(modules "$f"); do
-        echo "  $m: $(describe common-auth "$m")"
-    done
+    report_modules "$f" common-auth
 else
     echo "  NOT FOUND"
 fi
@@ -60,10 +64,9 @@ echo
 f="$PAM_DIR/common-password"
 echo "$f:"
 if [ -r "$f" ]; then
-    for m in $(modules "$f"); do
-        case "$m" in pam_pwquality.so|pam_cracklib.so|pam_pwhistory.so) continue ;; esac
-        echo "  $m: $(describe common-password "$m")"
-    done
+    # Complexity/history modules get their own lines below
+    report_modules "$f" common-password \
+        | grep -vE 'pam_(pwquality|cracklib|pwhistory)\.so'
 
     cx=$(active "$f" | grep -oE 'pam_(pwquality|cracklib)\.so' | head -1)
     if [ -n "$cx" ]; then
@@ -88,7 +91,9 @@ echo
 f="$PAM_DIR/sshd"
 echo "$f:"
 if [ -r "$f" ]; then
-    active "$f" | grep -E '^[[:space:]]*@include' | awk '{print "  " $1 " " $2}'
+    # Only the authentication include matters for this audit
+    active "$f" | grep -E '^[[:space:]]*@include[[:space:]]+common-auth' \
+        | awk '{print "  " $1 " " $2}'
     # MFA can live in sshd itself or in the included common-auth
     mfa=$({ active "$f"; active "$PAM_DIR/common-auth"; } \
           | grep -oE 'pam_(google_authenticator|oath|u2f|duo|yubico)\.so' | sort -u | tr '\n' ' ')
