@@ -44,6 +44,11 @@ chage -m 0 "$TEST_USER"    # allow an immediate password change
 
 # Try to change the password as the user: old, new, new on stdin.
 # Exit 0 means PAM accepted the new password.
+#
+# The naive form is:   echo '$test_pass' | passwd auditor
+# It is NOT used: single quotes send the literal text "$test_pass", root
+# skips pam_pwquality (so nothing is ever rejected), and it would target
+# the real auditor account. Running passwd as the test user fixes all three.
 try_passwd() {
     printf '%s\n%s\n%s\n' "$OLD_PW" "$1" "$1" \
         | timeout 15 su -s /bin/sh "$TEST_USER" -c passwd 2>&1
