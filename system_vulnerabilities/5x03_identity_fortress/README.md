@@ -33,6 +33,7 @@ account lifecycle) gets overhauled.
 | `14-disable_password_auth.sh` | Refuses to run unless the sudo user has a valid key in `authorized_keys`, tries a real key-only login to localhost (asks for `YES` if it cannot be tested; `--force` skips that), backs up `sshd_config` to `.backup.<date>`, sets `PasswordAuthentication no`, `KbdInteractiveAuthentication`/`ChallengeResponseAuthentication no`, `PubkeyAuthentication yes` in `sshd_config` and in `sshd_config.d/00-identity-fortress.conf` (overrides cloud-init's drop-in), keeps `UsePAM yes`, validates with `sshd -t` (rollback on failure), reloads SSH and checks the effective values with `sshd -T` |
 | `16-install_google_auth.sh` | Installs `libpam-google-authenticator` (same apt lock/repair handling as task 2), locates `pam_google_authenticator.so` with `dpkg -L` (architecture-independent), checks the `google-authenticator` tool, and lists the next steps. Does not enable anything yet |
 | `17-setup_user_totp.sh` | Run as the user to enroll (no sudo). Runs `google-authenticator -t -d -f -r 3 -R 30 -w 3 -e 5` (TOTP, no token reuse, 3 logins/30 s, window 3, 5 scratch codes), sets `~/.google_authenticator` to 400 and reads the applied settings back from it. Refuses to replace an existing secret unless `--force` (old secret kept as `.old`, restored if enrollment fails) |
+| `18-ssh_mfa.sh` | Requires key + TOTP: in `/etc/pam.d/sshd` replaces `@include common-auth` with `auth required pam_google_authenticator.so` (no Unix password prompt), and sets `KbdInteractiveAuthentication`/`ChallengeResponseAuthentication yes`, `AuthenticationMethods publickey,keyboard-interactive` in `sshd_config` and in task 14's drop-in (which is read first). Aborts if the sudo user has no TOTP secret, warns about other unenrolled key users (`--nullok` lets them in with the key only), validates with `sshd -t` and a PAM line check (rollback on failure), reloads SSH and checks `sshd -T` |
 
 ## Emergency recovery
 
@@ -44,6 +45,11 @@ account lifecycle) gets overhauled.
 - **Locked out of SSH (task 14):** from the VM console or `multipass shell`,
   `cp /etc/ssh/sshd_config.backup.<date> /etc/ssh/sshd_config`,
   `rm /etc/ssh/sshd_config.d/00-identity-fortress.conf`, `systemctl reload ssh`.
+- **Locked out by MFA (task 18):** from the console or `multipass shell`,
+  `cp /etc/pam.d/sshd.backup /etc/pam.d/sshd`,
+  `cp /etc/ssh/sshd_config.backup /etc/ssh/sshd_config`, restore
+  `sshd_config.d/00-identity-fortress.conf.backup`, `systemctl reload ssh`.
+  A lost phone: log in with one of the emergency scratch codes.
 - **No shell left:** Multipass VM: `multipass shell novatech-prod-03`, or
   boot to recovery mode and restore the `.bak` files.
 
