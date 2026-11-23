@@ -52,7 +52,12 @@ echo
 # ---- Test 1: key only ------------------------------------------------------
 echo "Test 1: SSH with key only (no TOTP)"
 echo "  Expected: Prompt for verification code"
-out=$(as_user ssh -v $SSH_OPTS -o PreferredAuthentications=publickey,keyboard-interactive \
+# The key from 12-generate_ssh_key.sh, else the user's other default key
+KEY="$USER_HOME/.ssh/id_ed25519"
+for k in id_ed25519 id_ecdsa id_rsa; do
+    [ -f "$USER_HOME/.ssh/$k" ] && { KEY="$USER_HOME/.ssh/$k"; break; }
+done
+out=$(as_user ssh -i "$KEY" -v $SSH_OPTS -o PreferredAuthentications=publickey,keyboard-interactive \
       "$USER_NAME@$HOST" true 2>&1)
 if echo "$out" | grep -qi 'partial success'; then
     ok "Result: CORRECT"
