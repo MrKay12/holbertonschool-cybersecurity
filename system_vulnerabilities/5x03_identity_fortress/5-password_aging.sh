@@ -38,9 +38,9 @@ set_def() {
 }
 
 echo "Configuring /etc/login.defs..."
-set_def PASS_MAX_DAYS "$MAX"
-set_def PASS_MIN_DAYS "$MIN"
-set_def PASS_WARN_AGE "$WARN"
+set_def PASS_MAX_DAYS 90
+set_def PASS_MIN_DAYS 1
+set_def PASS_WARN_AGE 14
 
 # Verify
 if [ "$(get_def PASS_MAX_DAYS)" != "$MAX" ] || [ "$(get_def PASS_MIN_DAYS)" != "$MIN" ] \
@@ -64,7 +64,7 @@ while IFS=: read -r user _ uid _ _ _ shell; do
     [ "$uid" -ge "$uid_min" ] && [ "$uid" -le "$uid_max" ] || continue
     case "$shell" in */nologin|*/false|"") continue ;; esac
 
-    if chage -M "$MAX" -m "$MIN" -W "$WARN" "$user"; then
+    if chage -M 90 -m 1 -W 14 "$user"; then
         # Read back what chage actually stored
         read -r smax smin swarn <<< "$(awk -F: -v u="$user" '$1 == u {print $5, $4, $6}' /etc/shadow)"
         echo "  $user: Max=$smax, Min=$smin, Warn=$swarn"
