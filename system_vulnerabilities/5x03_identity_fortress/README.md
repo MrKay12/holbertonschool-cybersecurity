@@ -18,7 +18,7 @@ account lifecycle) gets overhauled.
 
 | File | Description |
 |------|-------------|
-| `1-pam_audit.sh` | Read-only audit of the current PAM, password aging and SSH authentication settings, ending with an overall rating (WEAK / MODERATE / STRONG) |
+| `1-pam_audit.sh` | Read-only audit of the current PAM, password aging and SSH authentication settings, ending with an overall rating (WEAK / MODERATE / STRONG). It first warns if apt/dpkg is running (dpkg can rewrite PAM files mid-audit). `sudo ./1-pam_audit.sh --clear-stale-locks` also removes leftover apt/dpkg lock files when no package manager is running, then verifies the cleanup |
 
 ## Safety rules
 

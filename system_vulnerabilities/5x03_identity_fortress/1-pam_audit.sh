@@ -3,6 +3,11 @@
 # Read-only audit of the current PAM / identity configuration.
 # Documents the baseline (auth stack, password policy, lockout, aging, SSH)
 # before any hardening so changes can be compared and rolled back.
+#
+# Usage: ./1-pam_audit.sh [--clear-stale-locks]
+#   --clear-stale-locks  (root) remove leftover apt/dpkg lock files when no
+#                        package manager is running, then verify. Off by
+#                        default: a plain run changes nothing.
 
 PAM_DIR="/etc/pam.d"
 LOGIN_DEFS="/etc/login.defs"
@@ -46,6 +51,41 @@ active() { grep -vE '^[[:space:]]*(#|$)' "$1" 2>/dev/null; }
 
 # Unique module names in order of appearance
 modules() { active "$1" | grep -oE 'pam_[a-zA-Z0-9_]+\.so' | awk '!seen[$0]++'; }
+
+# ---- Pre-flight: package manager activity ----------------------------------
+# dpkg runs pam-auth-update, which rewrites /etc/pam.d/common-*. Auditing
+# while apt/dpkg is running could capture a half-written PAM stack.
+# Messages go to stderr so the audit report on stdout is unchanged.
+lock_files="/var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock"
+
+pkg_busy() {
+    # Running package manager processes
+    pgrep -x 'apt|apt-get|aptitude|dpkg|unattended-upgr' >/dev/null && return 0
+    # A process still holding one of the lock files
+    command -v fuser >/dev/null && fuser $lock_files >/dev/null 2>&1 && return 0
+    return 1
+}
+
+if pkg_busy; then
+    echo "WARNING: apt/dpkg is running; PAM files may change during the audit" >&2
+elif [ "$1" = "--clear-stale-locks" ]; then
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "Error: --clear-stale-locks needs root (sudo $0 $1)" >&2
+        exit 1
+    fi
+    # No apt/dpkg process is running, so any lock file left is stale
+    for l in $lock_files; do
+        [ -e "$l" ] && rm -f "$l" && echo "Removed stale lock: $l" >&2
+    done
+    # Verify: locks gone, nothing grabbed them, dpkg database consistent
+    left=0
+    for l in $lock_files; do [ -e "$l" ] && left=1; done
+    if [ "$left" -eq 0 ] && ! pkg_busy && dpkg --audit >/dev/null 2>&1; then
+        echo "Lock cleanup verified: no locks left, dpkg database consistent" >&2
+    else
+        echo "WARNING: lock cleanup could not be verified (run: dpkg --audit)" >&2
+    fi
+fi
 
 echo "=== PAM Configuration Audit ==="
 echo
