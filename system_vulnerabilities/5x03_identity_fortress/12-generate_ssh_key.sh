@@ -50,7 +50,7 @@ echo "  Public key: $(stat -c %a $HOME/.ssh/id_ed25519.pub)"
 echo
 
 echo "Public key fingerprint:"
-echo "  $(ssh-keygen -l -f $HOME/.ssh/id_ed25519.pub | awk '{print $2}')"
+echo "  $(ssh-keygen -lf $HOME/.ssh/id_ed25519.pub | awk '{print $2}')"
 echo
 
 echo "Your public key:"
