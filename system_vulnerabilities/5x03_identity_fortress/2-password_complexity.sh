@@ -52,9 +52,19 @@ prepare_apt() {
         echo "  Error: package manager started during lock cleanup" >&2
         exit 1
     fi
+    # Repair: finish an interrupted dpkg run, then fix broken dependencies
     if [ -n "$(dpkg --audit 2>/dev/null)" ]; then
         echo "  Repairing interrupted dpkg run..."
         dpkg --configure -a >/dev/null 2>&1
+    fi
+    if ! apt-get check >/dev/null 2>&1; then
+        echo "  Fixing broken dependencies..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -f -y -qq >/dev/null 2>&1
+    fi
+    # Verify the repair: no half-configured packages, no broken dependencies
+    if [ -n "$(dpkg --audit 2>/dev/null)" ] || ! apt-get check >/dev/null 2>&1; then
+        echo "  Error: broken packages remain (see: dpkg --audit; apt-get check)" >&2
+        exit 1
     fi
 }
 
