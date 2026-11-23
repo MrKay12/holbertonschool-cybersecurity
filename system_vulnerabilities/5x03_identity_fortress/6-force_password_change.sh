@@ -5,7 +5,7 @@
 #
 # Usage: sudo ./6-force_password_change.sh user1 [user2 ...]
 
-if [ "$#" -eq 0 ]; then
+if [ $# -eq 0 ]; then
     echo "Usage: $0 user1 [user2 ...]" >&2
     exit 1
 fi
