@@ -102,14 +102,15 @@ echo
 
 # ---- SSH security (effective sshd settings) --------------------------------
 echo "SSH Security:"
-check "Password authentication" "DISABLED" "ENABLED (14-disable_password_auth.sh)" \
-    "$(ok test "$(sshd_opt passwordauthentication)" = no)"
+# sshd -T prints the effective settings, in lowercase (hence grep -i)
+sshd -T 2>/dev/null | grep -qi "^PasswordAuthentication no"
+check "Password authentication" "DISABLED" "ENABLED (14-disable_password_auth.sh)" "$?"
 check "Public key authentication" "ENABLED" "DISABLED" \
     "$(ok test "$(sshd_opt pubkeyauthentication)" = yes)"
 
-methods=$(sshd_opt authenticationmethods)
-echo "$methods" | grep -q 'publickey' && echo "$methods" | grep -q 'keyboard-interactive' \
-    && [ "$(sshd_opt kbdinteractiveauthentication)" = yes ] \
+# MFA = sshd requires key then keyboard-interactive, and PAM asks for TOTP
+sshd -T 2>/dev/null | grep -qi "^AuthenticationMethods publickey,keyboard-interactive" \
+    && sshd -T 2>/dev/null | grep -qi "^KbdInteractiveAuthentication yes" \
     && active /etc/pam.d/sshd | grep -q 'pam_google_authenticator\.so'
 check "MFA required" "ENABLED" "NOT ENABLED (18-ssh_mfa.sh)" "$?"
 echo
