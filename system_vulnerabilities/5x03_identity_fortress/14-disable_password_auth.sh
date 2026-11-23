@@ -84,7 +84,7 @@ echo
 
 # ---- 2. Backup -------------------------------------------------------------
 echo "Backing up sshd_config..."
-cp -p /etc/ssh/sshd_config "$BACKUP" || exit 1
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup.$(date +%Y%m%d) || exit 1
 echo "  $BACKUP"
 dropin_existed=0
 [ -f "$DROPIN" ] && { dropin_existed=1; cp -p "$DROPIN" "$DROPIN.bak"; }
