@@ -64,7 +64,8 @@ while IFS=: read -r user _ uid _ _ _ shell; do
     [ "$uid" -ge "$uid_min" ] && [ "$uid" -le "$uid_max" ] || continue
     case "$shell" in */nologin|*/false|"") continue ;; esac
 
-    if chage -M 90 -m 1 -W 14 "$user"; then
+    # (usernames cannot contain spaces, so $user needs no quoting)
+    if chage -M 90 $user && chage -m 1 $user && chage -W 14 $user; then
         # Read back what chage actually stored
         read -r smax smin swarn <<< "$(awk -F: -v u="$user" '$1 == u {print $5, $4, $6}' /etc/shadow)"
         echo "  $user: Max=$smax, Min=$smin, Warn=$swarn"
