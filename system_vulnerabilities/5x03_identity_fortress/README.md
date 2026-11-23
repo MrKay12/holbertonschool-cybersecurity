@@ -19,6 +19,7 @@ account lifecycle) gets overhauled.
 | File | Description |
 |------|-------------|
 | `1-pam_audit.sh` | Read-only audit of the current PAM, password aging and SSH authentication settings, ending with an overall rating (WEAK / MODERATE / STRONG). It first warns if apt/dpkg is running (dpkg can rewrite PAM files mid-audit). `sudo ./1-pam_audit.sh --clear-stale-locks` also removes leftover apt/dpkg lock files when no package manager is running, then verifies the cleanup |
+| `2-password_complexity.sh` | Installs `libpam-pwquality` (waiting for a running apt/dpkg, then clearing and verifying stale locks), backs up `pwquality.conf` and `common-password`, enforces minlen 12, upper/lower/digit/special, no username and difok 3, adds `pam_pwquality.so` to the PAM password stack, and tests that `weak` and `Password123` are rejected (via `pwscore`) |
 
 ## Safety rules
 
