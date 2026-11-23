@@ -51,7 +51,7 @@ if dpkg-query -W -f='${Status}' fail2ban 2>/dev/null | grep -q "ok installed"; t
     echo "  fail2ban: Already installed"
 else
     prepare_apt
-    if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fail2ban >/dev/null 2>&1; then
+    if DEBIAN_FRONTEND=noninteractive apt install -y fail2ban >/dev/null 2>&1; then
         echo "  fail2ban: Installed"
     else
         echo "  Error: failed to install fail2ban" >&2
