@@ -20,7 +20,7 @@ echo
 mkdir -p "$SSH_DIR"
 chmod 700 "$SSH_DIR"
 
-if [ -e "$KEY" ]; then
+if [ -e $HOME/.ssh/id_ed25519 ]; then
     echo "Existing key found: $KEY"
     echo "  Not overwriting it (servers may already trust this key)."
     echo "  To replace it, move it away first: mv $KEY $KEY.old"
@@ -31,7 +31,7 @@ else
     echo
     echo "Enter passphrase (recommended):"
     # ssh-keygen asks for the passphrase twice itself
-    if ! ssh-keygen -t ed25519 -a 100 -f "$KEY" -C "$COMMENT" -q; then
+    if ! ssh-keygen -t ed25519 -a 100 -f $HOME/.ssh/id_ed25519 -C "$COMMENT" -q; then
         echo "Error: key generation failed" >&2
         exit 1
     fi
@@ -43,18 +43,18 @@ echo "  Public key: $KEY.pub"
 echo
 
 echo "Setting permissions..."
-chmod 600 "$KEY"
-chmod 644 "$KEY.pub"
-echo "  Private key: $(stat -c %a "$KEY") (owner read/write only)"
-echo "  Public key: $(stat -c %a "$KEY.pub")"
+chmod 600 $HOME/.ssh/id_ed25519
+chmod 644 $HOME/.ssh/id_ed25519.pub
+echo "  Private key: $(stat -c %a $HOME/.ssh/id_ed25519) (owner read/write only)"
+echo "  Public key: $(stat -c %a $HOME/.ssh/id_ed25519.pub)"
 echo
 
 echo "Public key fingerprint:"
-echo "  $(ssh-keygen -l -f "$KEY.pub" | awk '{print $2}')"
+echo "  $(ssh-keygen -l -f $HOME/.ssh/id_ed25519.pub | awk '{print $2}')"
 echo
 
 echo "Your public key:"
-cat "$KEY.pub"
+cat $HOME/.ssh/id_ed25519.pub
 echo
 
 echo "Next step: Add this public key to target servers' authorized_keys"
