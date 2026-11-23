@@ -34,9 +34,11 @@ DENY=$(conf deny 3)
 UNLOCK=$(conf unlock_time 600)
 INTERVAL=$(conf fail_interval 900)
 
-# Records of `faillock` output as: user|YYYY-MM-DD HH:MM:SS|type|source|V/I
-records() {
-    LC_ALL=C faillock "$@" 2>/dev/null | awk '
+export LC_ALL=C    # predictable faillock/date output
+
+# Turn `faillock` output (stdin) into: user|YYYY-MM-DD HH:MM:SS|type|source|V/I
+parse_records() {
+    awk '
         /^[^[:space:]]+:$/ { user = substr($0, 1, length($0) - 1); next }
         /^When/            { next }
         /^[0-9]{4}-[0-9]{2}-[0-9]{2} / {
@@ -77,74 +79,66 @@ check_user() {
     fi
 }
 
-case "$1" in
-    status)
-        echo "=== Faillock Status ==="
-        echo
-        echo "Locked accounts:"
-        found=0
-        all=$(records)
-        for user in $(echo "$all" | cut -d'|' -f1 | sort -u); do
-            read -r fails locked until <<< "$(echo "$all" | awk -F'|' -v u="$user" '$1 == u' | lock_state)"
-            [ "$locked" -eq 1 ] || continue
-            found=1
-            if [ "$until" -eq 0 ]; then
-                echo "  $user: $fails failures (locked until admin reset)"
-            else
-                echo "  $user: $fails failures (locked until $(date -d "@$until" +%H:%M:%S))"
-            fi
-        done
-        [ "$found" -eq 0 ] && echo "  None"
-        ;;
-
-    show)
-        user="$2"
-        check_user "$user"
-        echo "=== Faillock Details: $user ==="
-        echo
-        recs=$(records --user $user)
-        echo "Recent failures:"
-        if [ -z "$recs" ]; then
-            echo "  None"
-        fi
-        while IFS='|' read -r _ when type src valid; do
-            [ -n "$when" ] || continue
-            case "$type" in
-                RHOST) how="from $src" ;;
-                TTY)   how="on $src" ;;
-                *)     how="via $src" ;;
-            esac
-            note=""; [ "$valid" = "V" ] || note=" (expired)"
-            echo "  $when - Failed auth $how$note"
-        done <<< "$recs"
-        echo
-        read -r fails locked until <<< "$(echo "$recs" | lock_state)"
-        if [ "$locked" -eq 1 ]; then
-            echo "Status: LOCKED"
-            if [ "$until" -eq 0 ]; then
-                echo "Unlocks automatically at: never (admin reset required)"
-            else
-                echo "Unlocks automatically at: $(date -d "@$until" +%H:%M:%S)"
-            fi
+if [ "$1" = "status" ]; then
+    echo "=== Faillock Status ==="
+    echo
+    echo "Locked accounts:"
+    found=0
+    all=$(faillock 2>/dev/null | parse_records)
+    for user in $(echo "$all" | cut -d'|' -f1 | sort -u); do
+        read -r fails locked until <<< "$(echo "$all" | awk -F'|' -v u="$user" '$1 == u' | lock_state)"
+        [ "$locked" -eq 1 ] || continue
+        found=1
+        if [ "$until" -eq 0 ]; then
+            echo "  $user: $fails failures (locked until admin reset)"
         else
-            echo "Status: NOT LOCKED ($fails/$DENY failures)"
+            echo "  $user: $fails failures (locked until $(date -d "@$until" +%H:%M:%S))"
         fi
-        ;;
-
-    reset)
-        user="$2"
-        check_user "$user"
-        faillock --user $user --reset
-        # Verify: no valid failure left
-        if [ -z "$(records --user $user | grep '|V$')" ]; then
-            echo "Account $user: Lock cleared"
+    done
+    [ "$found" -eq 0 ] && echo "  None"
+elif [ "$1" = "show" ]; then
+    user="$2"
+    check_user "$user"
+    echo "=== Faillock Details: $user ==="
+    echo
+    recs=$(faillock --user $user 2>/dev/null | parse_records)
+    echo "Recent failures:"
+    if [ -z "$recs" ]; then
+        echo "  None"
+    fi
+    while IFS='|' read -r _ when type src valid; do
+        [ -n "$when" ] || continue
+        case "$type" in
+            RHOST) how="from $src" ;;
+            TTY)   how="on $src" ;;
+            *)     how="via $src" ;;
+        esac
+        note=""; [ "$valid" = "V" ] || note=" (expired)"
+        echo "  $when - Failed auth $how$note"
+    done <<< "$recs"
+    echo
+    read -r fails locked until <<< "$(echo "$recs" | lock_state)"
+    if [ "$locked" -eq 1 ]; then
+        echo "Status: LOCKED"
+        if [ "$until" -eq 0 ]; then
+            echo "Unlocks automatically at: never (admin reset required)"
         else
-            echo "Account $user: reset FAILED" >&2
-            exit 1
+            echo "Unlocks automatically at: $(date -d "@$until" +%H:%M:%S)"
         fi
-        ;;
-
-    *)
-        usage
-        ;;
-esac
+    else
+        echo "Status: NOT LOCKED ($fails/$DENY failures)"
+    fi
+elif [ "$1" = "reset" ]; then
+    user="$2"
+    check_user "$user"
+    faillock --user $user --reset
+    # Verify: no valid failure left
+    if [ -z "$(faillock --user $user 2>/dev/null | parse_records | grep '|V$')" ]; then
+        echo "Account $user: Lock cleared"
+    else
+        echo "Account $user: reset FAILED" >&2
+        exit 1
+    fi
+else
+    usage
+fi
