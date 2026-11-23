@@ -60,8 +60,8 @@ sed -i -E '/^[[:space:]]*password.*pam_pwhistory\.so/{/use_authtok/!s/$/ use_aut
 sed -i -E '/^[[:space:]]*password.*pam_unix\.so/{/use_authtok/!s/pam_unix\.so/pam_unix.so use_authtok/}' \
     "$PAM_PASSWORD"
 # Verify the final line with grep
-if ! grep -E '^[[:space:]]*password.*pam_pwhistory\.so.*remember=5' /etc/pam.d/common-password \
-        | grep -q use_authtok; then
+pwh_line=$(grep -E 'pam_pwhistory.so' /etc/pam.d/common-password | grep -v '^[[:space:]]*#')
+if ! echo "$pwh_line" | grep -q 'remember=5' || ! echo "$pwh_line" | grep -q 'use_authtok'; then
     echo "  Error: pam_pwhistory not configured (restore /etc/pam.d/common-password.bak)" >&2
     exit 1
 fi
