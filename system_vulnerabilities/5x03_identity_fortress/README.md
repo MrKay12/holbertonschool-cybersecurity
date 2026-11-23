@@ -23,7 +23,7 @@ account lifecycle) gets overhauled.
 | `3-test_complexity.sh` | Tests the policy with five passwords (dictionary word, no special character, too short, contains the username, strong) by running the real `passwd` as a throwaway user `audit` (removed on exit), so the full PAM password stack is exercised without touching a real account. Fails if any weak password is accepted or the strong one rejected. `-v` shows the PAM message |
 | `4-password_history.sh` | Creates `/etc/security/opasswd` (root-only), adds `pam_pwhistory.so remember=5` before `pam_unix` in `common-password` (backup in `common-password.bak`), reports the hash algorithm, and tests with a throwaway user that switching back to the previous password is blocked |
 | `5-password_aging.sh` | Backs up `/etc/login.defs` (`.bak`), sets `PASS_MAX_DAYS 90`, `PASS_MIN_DAYS 1`, `PASS_WARN_AGE 14` for new accounts, then applies them with `chage` to existing human accounts (UID in `UID_MIN`–`UID_MAX`, real login shell) and reads the values back from `/etc/shadow`. Service accounts are skipped |
-| `6-force_password_change.sh` | `sudo ./6-force_password_change.sh user1 [user2 ...]` expires each user's password (`passwd -e`, fallback `chage -d 0`) so it must be changed at next login, confirms it in `/etc/shadow`, and shows `chage -l` as proof. Unknown users are reported and make the script exit 1 |
+| `6-force_password_change.sh` | `sudo ./6-force_password_change.sh user1 [user2 ...]` expires each user's password (`passwd -e`, fallback `chage -d 0`) so it must be changed at next login, and confirms each user with `chage -l` ("password must be changed"). Unknown users are reported and make the script exit 1 |
 
 ## Safety rules
 

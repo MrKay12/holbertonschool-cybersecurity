@@ -36,9 +36,8 @@ for user in "$@"; do
     # (usernames cannot contain spaces, so $user needs no quoting)
     passwd -e $user >/dev/null 2>&1 || chage -d 0 $user
 
-    # Verify in /etc/shadow: field 3 (last change) must be 0
-    lastchg=$(awk -F: -v u="$user" '$1 == u {print $3}' /etc/shadow)
-    if [ "$lastchg" = "0" ]; then
+    # Verify with chage -l (C locale so the text is predictable)
+    if LC_ALL=C chage -l "$user" | grep -q "password must be changed"; then
         echo "  Password expired: FORCED"
         echo "  Must change at next login: YES"
         forced=$((forced + 1))
@@ -54,7 +53,7 @@ done
 if [ -n "$first" ]; then
     echo "Verification:"
     echo "  chage -l $first | grep \"Password expires\""
-    chage -l "$first" | grep "Password expires" | sed -E 's/^/  /; s/[[:space:]]+:[[:space:]]*/: /'
+    LC_ALL=C chage -l "$first" | grep "Password expires" | sed -E 's/^/  /; s/[[:space:]]+:[[:space:]]*/: /'
     echo
 fi
 
