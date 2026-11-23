@@ -31,6 +31,7 @@ account lifecycle) gets overhauled.
 | `12-generate_ssh_key.sh` | Run as the key owner (no sudo). Generates `~/.ssh/id_ed25519` with `ssh-keygen -t ed25519 -a 100` (passphrase prompted), sets `~/.ssh` 700, private key 600, public key 644, and prints the fingerprint and public key. Never overwrites an existing key |
 | `13-deploy_ssh_key.sh` | `./13-deploy_ssh_key.sh "<public key>"` validates the key with `ssh-keygen -lf`, creates `~/.ssh` (700), appends the key to `authorized_keys` (600) unless the same key is already there, then verifies key count, permissions and ownership |
 | `14-disable_password_auth.sh` | Refuses to run unless the sudo user has a valid key in `authorized_keys`, tries a real key-only login to localhost (asks for `YES` if it cannot be tested; `--force` skips that), backs up `sshd_config` to `.backup.<date>`, sets `PasswordAuthentication no`, `KbdInteractiveAuthentication`/`ChallengeResponseAuthentication no`, `PubkeyAuthentication yes` in `sshd_config` and in `sshd_config.d/00-identity-fortress.conf` (overrides cloud-init's drop-in), keeps `UsePAM yes`, validates with `sshd -t` (rollback on failure), reloads SSH and checks the effective values with `sshd -T` |
+| `16-install_google_auth.sh` | Installs `libpam-google-authenticator` (same apt lock/repair handling as task 2), locates `pam_google_authenticator.so` with `dpkg -L` (architecture-independent), checks the `google-authenticator` tool, and lists the next steps. Does not enable anything yet |
 
 ## Emergency recovery
 
