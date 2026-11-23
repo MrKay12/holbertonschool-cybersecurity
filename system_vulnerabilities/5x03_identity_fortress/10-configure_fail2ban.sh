@@ -115,7 +115,8 @@ fi
 
 # ---- 3. Service ------------------------------------------------------------
 echo "Starting fail2ban..."
-systemctl enable fail2ban >/dev/null 2>&1
+systemctl enable --now fail2ban >/dev/null 2>&1
+# --now does not restart an already running service: reload the new jail
 systemctl restart fail2ban
 # Wait for the server socket and the sshd jail to come up
 for i in $(seq 1 15); do
