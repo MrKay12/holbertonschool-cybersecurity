@@ -19,22 +19,22 @@ fi
 echo "=== Password History Configuration ==="
 echo
 echo "Configuring pam_pwhistory..."
-# Keep the first backup (task 2's) intact; this one is specific to this step
-cp -p "$PAM_PASSWORD" "$PAM_PASSWORD.pwhistory.backup" || exit 1
-echo "  Backup: $PAM_PASSWORD.pwhistory.backup"
+# Back up the PAM file before touching it (task 2's .backup stays intact)
+cp /etc/pam.d/common-password /etc/pam.d/common-password.bak || exit 1
+echo "  Backup: /etc/pam.d/common-password.bak"
 echo
 
 # ---- 1. History file -------------------------------------------------------
 echo "Creating password history file..."
-if [ -e "$OPASSWD" ]; then
-    echo "  $OPASSWD: Already exists"
+if [ -e /etc/security/opasswd ]; then
+    echo "  /etc/security/opasswd: Already exists"
 else
-    touch "$OPASSWD"
-    echo "  $OPASSWD: Created"
+    touch /etc/security/opasswd
+    echo "  /etc/security/opasswd: Created"
 fi
 # Holds old password hashes: root-only
-chown root:root "$OPASSWD"
-chmod 600 "$OPASSWD"
+chown root:root /etc/security/opasswd
+chmod 600 /etc/security/opasswd
 echo
 
 # ---- 2. PAM stack ----------------------------------------------------------
@@ -49,15 +49,20 @@ if grep -qE '^[[:space:]]*password.*pam_pwhistory\.so' "$PAM_PASSWORD"; then
     }" "$PAM_PASSWORD"
     echo "  pam_pwhistory.so remember=$REMEMBER: Updated"
 else
-    sed -i -E "0,/^[[:space:]]*password.*pam_unix\.so/s//password\trequired\t\t\tpam_pwhistory.so remember=$REMEMBER use_authtok\n&/" \
-        "$PAM_PASSWORD"
-    echo "  pam_pwhistory.so remember=$REMEMBER: Added"
+    sed -i -E "0,/^[[:space:]]*password.*pam_unix\.so/s//password\trequired\t\t\tpam_pwhistory.so remember=5 use_authtok\n&/" \
+        /etc/pam.d/common-password
+    echo "  pam_pwhistory.so remember=5: Added"
 fi
+# use_authtok: check the new password pam_pwquality already collected
+sed -i -E '/^[[:space:]]*password.*pam_pwhistory\.so/{/use_authtok/!s/$/ use_authtok/}' \
+    /etc/pam.d/common-password
 # pam_unix must reuse the password already validated above it
 sed -i -E '/^[[:space:]]*password.*pam_unix\.so/{/use_authtok/!s/pam_unix\.so/pam_unix.so use_authtok/}' \
     "$PAM_PASSWORD"
-if ! grep -qE "^[[:space:]]*password.*pam_pwhistory\.so.*remember=$REMEMBER" "$PAM_PASSWORD"; then
-    echo "  Error: pam_pwhistory not configured (restore $PAM_PASSWORD.pwhistory.backup)" >&2
+# Verify the final line with grep
+if ! grep -E '^[[:space:]]*password.*pam_pwhistory\.so.*remember=5' /etc/pam.d/common-password \
+        | grep -q use_authtok; then
+    echo "  Error: pam_pwhistory not configured (restore /etc/pam.d/common-password.bak)" >&2
     exit 1
 fi
 echo
