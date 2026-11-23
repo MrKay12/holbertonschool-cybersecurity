@@ -26,10 +26,12 @@ account lifecycle) gets overhauled.
 | `6-force_password_change.sh` | `sudo ./6-force_password_change.sh user1 [user2 ...]` expires each user's password (`passwd -e`, fallback `chage -d 0`) so it must be changed at next login, and confirms each user with `chage -l` ("password must be changed"). Unknown users are reported and make the script exit 1 |
 | `8-configure_faillock.sh` | Adds `pam_faillock` (preauth first, authfail just before `pam_deny`, renumbering the `[success=N]` jumps so the stack logic is preserved) to `common-auth` and `common-account`, writes `deny = 5`, `unlock_time = 900`, `fail_interval = 900` to `faillock.conf`, then tests with a throwaway user: correct password works, 5 wrong ones, correct password refused. All files backed up to `.bak` and restored automatically if auth breaks. root is not locked (emergency access) |
 | `9-faillock_manage.sh` | `status` lists locked accounts with failure count and unlock time; `show <user>` lists each failure (time, source) and the lock state; `reset <user>` runs `faillock --user <user> --reset` and verifies no failure is left. Lock state follows `deny` / `fail_interval` / `unlock_time` from `faillock.conf` |
+| `10-configure_fail2ban.sh` | Installs fail2ban (same apt lock/repair handling as task 2), writes `/etc/fail2ban/jail.local` with an `[sshd]` jail (`maxretry = 5`, `findtime = 600`, `bantime = 3600`), validates it with `fail2ban-client -t`, starts the service and shows the jail status. Uses `/var/log/auth.log`, or `backend = systemd` when that file does not exist. Localhost and the admin's SSH client IP are in `ignoreip` |
 
 ## Emergency recovery
 
 - **Locked user:** `sudo ./9-faillock_manage.sh reset <name>` (or `sudo faillock --user <name> --reset`)
+- **Banned IP:** `sudo fail2ban-client set sshd unbanip <ip>`
 - **Broken PAM stack:** keep a root shell open while testing; restore with
   `cp /etc/pam.d/common-auth.bak /etc/pam.d/common-auth` (same for
   `common-account`, `common-password`, `/etc/security/faillock.conf`).
