@@ -30,6 +30,7 @@ account lifecycle) gets overhauled.
 | `11-fail2ban_manage.sh` | `status` shows the service, jail list and `sshd` banned/total/failed counts; `banned` lists the `sshd` jail's banned IPs with ban and expiry times (`get sshd banip --with-time`, plain list on older fail2ban); `unban <ip>` validates the IP, runs `fail2ban-client set sshd unbanip` and verifies it is gone |
 | `12-generate_ssh_key.sh` | Run as the key owner (no sudo). Generates `~/.ssh/id_ed25519` with `ssh-keygen -t ed25519 -a 100` (passphrase prompted), sets `~/.ssh` 700, private key 600, public key 644, and prints the fingerprint and public key. Never overwrites an existing key |
 | `13-deploy_ssh_key.sh` | `./13-deploy_ssh_key.sh "<public key>"` validates the key with `ssh-keygen -lf`, creates `~/.ssh` (700), appends the key to `authorized_keys` (600) unless the same key is already there, then verifies key count, permissions and ownership |
+| `14-disable_password_auth.sh` | Refuses to run unless the sudo user has a valid key in `authorized_keys`, tries a real key-only login to localhost (asks for `YES` if it cannot be tested; `--force` skips that), backs up `sshd_config` to `.backup.<date>`, sets `PasswordAuthentication no`, `KbdInteractiveAuthentication`/`ChallengeResponseAuthentication no`, `PubkeyAuthentication yes` in `sshd_config` and in `sshd_config.d/00-identity-fortress.conf` (overrides cloud-init's drop-in), keeps `UsePAM yes`, validates with `sshd -t` (rollback on failure), reloads SSH and checks the effective values with `sshd -T` |
 
 ## Emergency recovery
 
@@ -38,6 +39,9 @@ account lifecycle) gets overhauled.
 - **Broken PAM stack:** keep a root shell open while testing; restore with
   `cp /etc/pam.d/common-auth.bak /etc/pam.d/common-auth` (same for
   `common-account`, `common-password`, `/etc/security/faillock.conf`).
+- **Locked out of SSH (task 14):** from the VM console or `multipass shell`,
+  `cp /etc/ssh/sshd_config.backup.<date> /etc/ssh/sshd_config`,
+  `rm /etc/ssh/sshd_config.d/00-identity-fortress.conf`, `systemctl reload ssh`.
 - **No shell left:** Multipass VM: `multipass shell novatech-prod-03`, or
   boot to recovery mode and restore the `.bak` files.
 
