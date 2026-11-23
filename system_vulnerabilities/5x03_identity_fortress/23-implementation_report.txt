@@ -1,0 +1,382 @@
+===============================================================================
+                     NOVATECH SOLUTIONS
+            IDENTITY HARDENING - IMPLEMENTATION REPORT
+                  Project 5x03 "Identity Fortress"
+===============================================================================
+
+Client          : NovaTech Solutions
+Prepared by     : CyberShield Consulting, Security Engineering
+Audience        : NovaTech leadership (CISO, board) and auditors
+System          : novatech-prod-03 (DMZ bastion, Ubuntu, hardened in 5x02)
+Classification  : Confidential
+Related         : 21-identity_policy.txt (policy SEC-POL-IAM-001)
+                  20-emergency_procedures.txt (emergency runbook)
+
+
+===============================================================================
+1. EXECUTIVE SUMMARY
+===============================================================================
+
+The 5x02 project hardened the bastion's kernel, packages and services. The
+penetration test that followed did not need any of those weaknesses: the red
+team guessed three passwords with an automated tool (Hydra) in 20 minutes
+and logged in over SSH.
+
+Root cause: identity controls were missing. Weak passwords were accepted,
+there was no limit on guessing, old passwords could be reused, SSH accepted
+passwords, and there was no second factor.
+
+This project closes that gap with six layers of controls:
+
+  1. Password quality   strong passwords enforced at every change
+  2. Password history   last 5 passwords cannot be reused
+  3. Brute-force defence accounts locked after 5 failures, attacking IPs
+                        banned for 1 hour
+  4. Key-only SSH       passwords no longer accepted for SSH
+  5. Two-factor SSH     SSH key AND a time-based code (TOTP) required
+  6. Lifecycle          password aging, forced change of compromised
+                        passwords, emergency and governance procedures
+
+Outcome: a stolen or guessed password is no longer enough to log in to the
+bastion. Even a stolen SSH key is not enough without the user's phone. The
+attack used in the pentest is now blocked at four separate points
+(password quality, lockout, IP ban, and SSH refusing passwords).
+
+Status: all 22 technical and documentation deliverables are complete. Each
+change is scripted, backed up before modification, validated, and can be
+rolled back. Final sign-off requires running the verification suite on the
+production host (section 5.1). Residual risks and next steps are listed in
+section 6.
+
+
+===============================================================================
+2. INITIAL ASSESSMENT
+===============================================================================
+
+2.1 Penetration test findings
+  Method: online dictionary attack against SSH (Hydra), about 20 minutes.
+
+  Account        Cracked password   Weakness
+  -------------  -----------------  ------------------------------------
+  jsmith         jsmith2023         username + year
+  developer      dev123456          short word + digit sequence
+  backup_admin   backup             dictionary word, 6 characters,
+                                    privileged account
+
+  All three would have been rejected by the policy now in place (length,
+  character classes, username and dictionary checks).
+
+2.2 Security audit findings
+  F1  40% of users have passwords based on their username or common words
+  F2  No account lockout: unlimited guessing per account
+  F3  No password history: users alternate between two passwords
+  F4  SSH accepts password authentication
+  F5  No multi-factor authentication
+  F6  Password aging disabled (maximum age 99999 days)
+
+2.3 Baseline audit (1-pam_audit.sh, before changes)
+  /etc/pam.d/common-auth       pam_unix only (no lockout module)
+  /etc/pam.d/common-password   complexity NONE, history NONE
+  /etc/pam.d/sshd              MFA modules NONE
+  Account lockout              pam_faillock / pam_tally2 NOT CONFIGURED
+  Password aging               max 99999 / min 0 / warn 7
+  SSH                          PasswordAuthentication yes (INSECURE)
+  Overall                      Identity controls WEAK
+
+2.4 Risk rating before remediation: CRITICAL
+  An internet-facing bastion in the DMZ could be compromised by an
+  unskilled attacker with a public tool and a common wordlist.
+
+
+===============================================================================
+3. REMEDIATION ACTIONS (BY CATEGORY)
+===============================================================================
+
+3.1 Finding-to-control mapping
+
+  Finding  Control(s)                                    Deliverable(s)
+  -------  --------------------------------------------  ----------------
+  F1       Complexity (pam_pwquality); forced change of  2, 3, 6
+           cracked passwords
+  F2       Account lockout (pam_faillock); IP banning    8, 9, 10, 11
+           (fail2ban)
+  F3       Password history (pam_pwhistory); minimum     4, 5
+           age 1 day
+  F4       Key-based SSH, password authentication off    12, 13, 14
+  F5       TOTP second factor for SSH                    16, 17, 18, 19
+  F6       Password aging 90/1/14                        5
+  All      Audit, emergency runbook, policy, final audit 1, 20, 21, 22
+
+3.2 Password quality
+  - Installed libpam-pwquality; minimum 12 characters with upper, lower,
+    digit and special character, username rejected, 3 characters must
+    differ from the old password, dictionary check     (2-password_complexity)
+  - Enforcement tested with real passwd attempts on a throwaway account
+                                                       (3-test_complexity)
+  - The three cracked accounts were expired: new password required at
+    next login                                    (6-force_password_change)
+
+3.3 Password history and aging
+  - pam_pwhistory remembers 5 passwords; history file root-only
+                                                       (4-password_history)
+  - login.defs defaults 90/1/14 and the same values applied with chage to
+    every existing human account; service accounts skipped
+                                                       (5-password_aging)
+
+3.4 Brute-force defence
+  - pam_faillock: 5 failures within 15 minutes locks the account for
+    15 minutes. root exempt to keep console recovery possible
+                                                       (8-configure_faillock)
+  - Admin tool to list, inspect and clear lockouts     (9-faillock_manage)
+  - fail2ban sshd jail: 5 failures in 10 minutes bans the source IP for
+    1 hour; localhost and the admin's IP whitelisted (10-configure_fail2ban)
+  - Admin tool for jail status, banned IPs, unban      (11-fail2ban_manage)
+
+3.5 SSH key-based authentication
+  - ED25519 keys with 100 KDF rounds; private key 600, never overwritten
+                                                       (12-generate_ssh_key)
+  - Key deployment with validation, duplicate detection and permission
+    checks                                             (13-deploy_ssh_key)
+  - Password authentication disabled, only after confirming the admin
+    has a working key                             (14-disable_password_auth)
+
+3.6 Multi-factor authentication
+  - libpam-google-authenticator installed              (16-install_google_auth)
+  - Per-user TOTP enrollment: no code reuse, 3 attempts per 30 s, window
+    3, 5 scratch codes                                 (17-setup_user_totp)
+  - SSH requires publickey THEN keyboard-interactive (TOTP); Unix password
+    prompt removed from the SSH PAM stack              (18-ssh_mfa)
+  - End-to-end MFA test with real SSH attempts         (19-test_mfa)
+
+3.7 Governance
+  - Emergency access runbook                  (20-emergency_procedures.txt)
+  - Identity Security Policy                  (21-identity_policy.txt)
+  - Final audit of 12 controls                (22-identity_audit)
+
+3.8 Change safety (applies to every script that modifies the system)
+  - Backup before change (.bak / .backup / .backup.YYYYMMDD files)
+  - Validation before activation (sshd -t, PAM line check, fail2ban -t)
+  - Automatic rollback when validation or a post-change test fails
+  - Idempotent: scripts can be re-run without duplicating settings
+  - Lock-out guards: no SSH change unless the admin's key (and TOTP for
+    MFA) is in place; existing sessions stay open during reloads
+
+
+===============================================================================
+4. CONFIGURATION DETAILS
+===============================================================================
+
+4.1 /etc/security/pwquality.conf
+    minlen = 12     dcredit = -1    ucredit = -1    lcredit = -1
+    ocredit = -1    usercheck = 1   difok = 3
+
+4.2 /etc/pam.d/common-password (password stack, in order)
+    password requisite  pam_pwquality.so retry=3
+    password required   pam_pwhistory.so remember=5 use_authtok
+    password [success=1 default=ignore] pam_unix.so ... use_authtok
+    password requisite  pam_deny.so
+    password required   pam_permit.so
+    /etc/security/opasswd: root:root, mode 600
+
+4.3 /etc/login.defs and existing accounts
+    PASS_MAX_DAYS 90    PASS_MIN_DAYS 1    PASS_WARN_AGE 14
+    chage -M 90 -m 1 -W 14 on every human account (UID 1000+, login shell)
+
+4.4 /etc/pam.d/common-auth and common-account (lockout)
+    auth    required        pam_faillock.so preauth
+    auth    [success=2 default=ignore] pam_unix.so nullok
+    auth    [default=die]   pam_faillock.so authfail
+    auth    requisite       pam_deny.so
+    auth    required        pam_permit.so
+    account required        pam_faillock.so          (appended)
+    Note: the pam_unix jump was renumbered (1 -> 2) so a correct password
+    still skips both the authfail rule and pam_deny.
+
+4.5 /etc/security/faillock.conf
+    deny = 5    unlock_time = 900    fail_interval = 900
+
+4.6 /etc/fail2ban/jail.local
+    [DEFAULT] ignoreip = 127.0.0.1/8 ::1 <admin IP>
+    [sshd]    enabled = true, port = ssh, filter = sshd,
+              logpath = /var/log/auth.log (or backend = systemd),
+              maxretry = 5, findtime = 600, bantime = 3600
+
+4.7 SSH (sshd_config and sshd_config.d/00-identity-fortress.conf)
+    PasswordAuthentication no
+    PubkeyAuthentication yes
+    KbdInteractiveAuthentication yes   (alias ChallengeResponseAuthentication)
+    AuthenticationMethods publickey,keyboard-interactive
+    UsePAM yes
+    PermitRootLogin no                 (from 5x02)
+    The 00- drop-in is read first. It overrides cloud images'
+    50-cloud-init.conf, which sets PasswordAuthentication yes.
+
+4.8 /etc/pam.d/sshd
+    auth required pam_google_authenticator.so
+    #@include common-auth   (disabled: no Unix password in the SSH flow)
+
+4.9 Per user
+    ~/.ssh                    700
+    ~/.ssh/id_ed25519         600 (private key, passphrase-protected)
+    ~/.ssh/authorized_keys    600
+    ~/.google_authenticator   400 (TOTP secret, scratch codes)
+
+
+===============================================================================
+5. TESTING RESULTS
+===============================================================================
+
+5.1 Verification suite (run on novatech-prod-03 for sign-off)
+  Each check is automated; a script exits non-zero when its check fails.
+
+  #   Control                  Script / method         Pass criterion
+  --  -----------------------  ----------------------  ----------------------
+  T1  Weak passwords rejected  3-test_complexity       "password",
+                                                       "Password123", "Ab1!",
+                                                       "auditor2024" REJECTED;
+                                                       strong one ACCEPTED
+  T2  History enforced         4-password_history      reuse of previous
+                                                       password BLOCKED
+  T3  Aging applied            5-password_aging        90/1/14 read back from
+                                                       /etc/shadow per user
+  T4  Compromised passwords    6-force_password_change chage -l: "password
+      expired                                          must be changed"
+  T5  Account lockout          8-configure_faillock    good pw OK; 5 bad pw;
+                                                       good pw then REFUSED
+  T6  IP banning               11-fail2ban_manage      sshd jail active
+                               status
+  T7  SSH key only             14-disable_password_    sshd -T:
+                               auth                    passwordauthentication
+                                                       no
+  T8  Key alone insufficient   19-test_mfa Test 1      "partial success",
+                                                       TOTP still required
+  T9  No key refused           19-test_mfa Test 2      Permission denied
+                                                       (publickey)
+  T10 Overall                  22-identity_audit       12/12 PASSED, STRONG
+
+  Result recording:
+    T1 [ ]  T2 [ ]  T3 [ ]  T4 [ ]  T5 [ ]  T6 [ ]  T7 [ ]  T8 [ ]
+    T9 [ ]  T10 [ ]      Score from 22-identity_audit: ____/12
+    Performed by: ______________   Date: __________
+    Reviewed by : ______________   Date: __________
+
+5.2 Pre-deployment validation (development lab)
+  Before production, every script was checked for syntax, run as a
+  non-root user (must refuse), and its file changes were applied to copies
+  of real configuration files, including re-runs (idempotency). Logic that
+  depends on live services was exercised against simulated tool output.
+  This validation found and fixed the following defects before deployment:
+
+  - Lockout (8): inserting the authfail rule after pam_unix without
+    renumbering pam_unix's [success=1] jump would have sent correct
+    passwords to pam_deny, locking out ALL users. Fixed: jumps renumbered.
+  - Lockout (8): with several backends (SSSD, Kerberos), authfail placed
+    right after pam_unix ended the stack before the other backends ran.
+    Fixed: authfail placed just before pam_deny.
+  - MFA (18): leaving "@include common-auth" in /etc/pam.d/sshd would have
+    re-added a password prompt to the SSH flow. Fixed: replaced by TOTP.
+  - SSH (14, 18): on cloud images, settings written only to sshd_config
+    are overridden by sshd_config.d drop-ins (first value wins). Fixed:
+    settings also written to a 00- drop-in, verified with sshd -T.
+  - fail2ban (10): a local desktop session (":0") was taken as the admin
+    IP for the whitelist. Fixed: only real IPv4/IPv6 addresses accepted.
+  - fail2ban tool (11): ban expiry showed the date instead of the time.
+  - TOTP enrollment (17): re-enrollment could not replace the read-only
+    secret file. Fixed: old secret moved aside, restored on failure.
+  - PAM check (18): valid lines with "[...]" controls were flagged as
+    errors. Fixed.
+  - Final audit (22): the lockout check passed even with pam_faillock
+    absent from the PAM stack. Fixed: module presence required.
+
+5.3 Tests not performed in the lab
+  - Real network brute-force from an external host (Hydra re-test). This
+    is recommended as part of the next penetration test (section 6).
+  - Real TOTP logins with a phone. These are covered by T8/T9 and the
+    manual first login after 18-ssh_mfa.
+
+
+===============================================================================
+6. REMAINING RECOMMENDATIONS
+===============================================================================
+
+Priority: H = within 1 month, M = within 3 months, L = within 6 months.
+
+  H1  Complete the TOTP rollout. Enroll every remaining human user and
+      remove the nullok option if it was used. Monitor with
+      22-identity_audit ("Users without TOTP").
+  H2  Service accounts. Inventory them. Use nologin shells, or keys
+      restricted with from= / command= / no-pty, with a named owner and a
+      documented exception (policy section 8).
+  H3  Re-test. Ask the red team to repeat the Hydra attack and to try
+      credential stuffing against the hardened bastion.
+  H4  Centralised logging and alerting. Forward auth, sudo, faillock and
+      fail2ban logs to a SIEM. Alert on repeated lockouts, bans, scratch
+      code use and any EMERGENCY-BYPASS in sshd_config.
+  H5  Time synchronisation. Make sure chrony/NTP is active. TOTP fails if
+      the server clock drifts by more than about 90 seconds.
+
+  M1  Protect the PAM changes from pam-auth-update. Running it regenerates
+      common-auth/common-password and would silently drop the faillock
+      and pwhistory lines. Package them as /usr/share/pam-configs
+      profiles, or manage the files with configuration management
+      (Ansible), and alert on drift (22-identity_audit in cron).
+  M2  Break-glass account. Create it (key and TOTP sealed in the safe,
+      two-person access) and test the emergency runbook on a
+      non-production VM.
+  M3  Breached-password screening. Check new passwords against known
+      breached passwords (e.g. a local copy of a breach corpus), as
+      recommended by NIST SP 800-63B. Character rules alone do not stop
+      "Summer2024!".
+  M4  Console protection. Set a GRUB password and use disk encryption
+      where possible. Recovery mode otherwise bypasses all of the above.
+  M5  Inactive accounts. Set useradd -D -f 30 (lock 30 days after
+      password expiry) and automate the quarterly access review.
+
+  L1  Phishing-resistant MFA. Move administrators to hardware security
+      keys (FIDO2, ssh-keygen -t ed25519-sk). They cannot be phished or
+      copied, unlike TOTP codes.
+  L2  Central identity management (FreeIPA / LDAP with SSSD). One place
+      to create, disable and audit accounts across all servers. Short-lived
+      SSH certificates instead of authorized_keys files.
+  L3  Revisit the 90-day rotation. NIST SP 800-63B advises against routine
+      rotation once MFA and breached-password screening are in place.
+      Change it when the compliance frameworks allow.
+  L4  Roll out the same controls to every other Linux server, starting
+      with the systems reachable from the bastion.
+
+Residual risk after remediation: LOW for online password attacks against
+the bastion, provided H1 and H2 are completed. The main remaining risks are
+phishing of both factors in real time (addressed by L1), insider misuse,
+and configuration drift (addressed by M1 and H4).
+
+
+===============================================================================
+APPENDIX A - DELIVERABLES
+===============================================================================
+
+   1-pam_audit.sh              baseline / any-time configuration audit
+   2-password_complexity.sh    pam_pwquality configuration
+   3-test_complexity.sh        complexity enforcement test
+   4-password_history.sh       pam_pwhistory configuration + test
+   5-password_aging.sh         login.defs + chage on existing users
+   6-force_password_change.sh  expire compromised passwords
+   8-configure_faillock.sh     pam_faillock configuration + test
+   9-faillock_manage.sh        lockout status / details / reset
+  10-configure_fail2ban.sh     fail2ban sshd jail
+  11-fail2ban_manage.sh        jail status / banned IPs / unban
+  12-generate_ssh_key.sh       ED25519 key generation
+  13-deploy_ssh_key.sh         authorized_keys deployment
+  14-disable_password_auth.sh  key-only SSH
+  16-install_google_auth.sh    TOTP PAM module installation
+  17-setup_user_totp.sh        per-user TOTP enrollment
+  18-ssh_mfa.sh                key + TOTP for SSH
+  19-test_mfa.sh               MFA end-to-end test
+  20-emergency_procedures.txt  emergency access runbook
+  21-identity_policy.txt       Identity Security Policy
+  22-identity_audit.sh         final audit (12 controls)
+  23-implementation_report.txt this report
+  README.md                    project overview and recovery commands
+
+===============================================================================
+                              END OF REPORT
+===============================================================================
