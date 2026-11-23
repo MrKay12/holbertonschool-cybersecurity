@@ -25,10 +25,11 @@ account lifecycle) gets overhauled.
 | `5-password_aging.sh` | Backs up `/etc/login.defs` (`.bak`), sets `PASS_MAX_DAYS 90`, `PASS_MIN_DAYS 1`, `PASS_WARN_AGE 14` for new accounts, then applies them with `chage` to existing human accounts (UID in `UID_MIN`–`UID_MAX`, real login shell) and reads the values back from `/etc/shadow`. Service accounts are skipped |
 | `6-force_password_change.sh` | `sudo ./6-force_password_change.sh user1 [user2 ...]` expires each user's password (`passwd -e`, fallback `chage -d 0`) so it must be changed at next login, and confirms each user with `chage -l` ("password must be changed"). Unknown users are reported and make the script exit 1 |
 | `8-configure_faillock.sh` | Adds `pam_faillock` (preauth first, authfail just before `pam_deny`, renumbering the `[success=N]` jumps so the stack logic is preserved) to `common-auth` and `common-account`, writes `deny = 5`, `unlock_time = 900`, `fail_interval = 900` to `faillock.conf`, then tests with a throwaway user: correct password works, 5 wrong ones, correct password refused. All files backed up to `.bak` and restored automatically if auth breaks. root is not locked (emergency access) |
+| `9-faillock_manage.sh` | `status` lists locked accounts with failure count and unlock time; `show <user>` lists each failure (time, source) and the lock state; `reset <user>` runs `faillock --user <user> --reset` and verifies no failure is left. Lock state follows `deny` / `fail_interval` / `unlock_time` from `faillock.conf` |
 
 ## Emergency recovery
 
-- **Locked user:** `sudo faillock --user <name> --reset`
+- **Locked user:** `sudo ./9-faillock_manage.sh reset <name>` (or `sudo faillock --user <name> --reset`)
 - **Broken PAM stack:** keep a root shell open while testing; restore with
   `cp /etc/pam.d/common-auth.bak /etc/pam.d/common-auth` (same for
   `common-account`, `common-password`, `/etc/security/faillock.conf`).
