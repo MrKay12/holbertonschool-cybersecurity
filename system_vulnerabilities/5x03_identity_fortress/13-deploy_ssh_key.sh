@@ -10,8 +10,12 @@
 # - sshd's StrictModes rejects keys in group/world-writable files, so the
 #   directory is set to 700 and the file to 600.
 
-if [ $# -ne 1 ] || [ -z "$1" ]; then
+if [ $# -eq 0 ] || [ -z "$1" ]; then
     echo "Usage: $0 \"ssh-ed25519 AAAA... user@host\"" >&2
+    exit 1
+fi
+if [ $# -gt 1 ]; then
+    echo "Error: quote the key so it is one argument: $0 \"ssh-ed25519 AAAA... user@host\"" >&2
     exit 1
 fi
 
