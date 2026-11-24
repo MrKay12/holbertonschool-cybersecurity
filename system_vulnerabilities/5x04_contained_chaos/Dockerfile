@@ -81,8 +81,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# Unprivileged user with a fixed UID/GID, no password, no login shell
-RUN groupadd --gid 1000 appuser \
+# curl is the only extra package, for the HEALTHCHECK below. Unprivileged user
+# with a fixed UID/GID, no password, no login shell.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid appuser --no-create-home \
        --home-dir /nonexistent --shell /usr/sbin/nologin appuser
 
@@ -101,7 +105,12 @@ USER appuser
 
 EXPOSE 5000
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
+# Health monitoring (task 8): GET /health every 30s, 10s timeout, the
+# container is marked "unhealthy" after 3 consecutive failures. curl -f turns
+# any HTTP error (4xx/5xx) into a failure. Runs as appuser like the app.
+# Check: docker inspect devstream-health:v1 --format='{{json .Config.Healthcheck}}'
+#        docker ps  ->  Up ... (healthy)
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
 
 CMD ["python", "app.py"]
