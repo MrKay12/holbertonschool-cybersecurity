@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # 1-build_vulnerable.sh - Build and inspect DevStream's vulnerable image.
 #
 # Creates the Flask app, requirements.txt and the insecure Dockerfile in
