@@ -1,0 +1,100 @@
+# docker-compose.yml - secure Python development environment (task 16)
+#
+# Image: secure-python-dev:v1, built from ./Dockerfile (task 15).
+#
+# Usage:
+#   docker-compose build                              # build the image once
+#   docker-compose run --rm dev                       # interactive shell in /workspace
+#   docker-compose run --rm dev python my_script.py
+#   docker-compose run --rm dev pytest tests/
+#   docker-compose run --rm dev pylint my_module/
+#   docker-compose run --rm dev black --check .
+#   docker-compose run --rm dev mypy .
+#
+# Shortcuts (same image, same hardening, preset command):
+#   docker-compose run --rm test        # pytest, with NO network
+#   docker-compose run --rm lint        # pylint + black --check + mypy
+#   docker-compose run --rm format      # black .
+#   docker-compose up app               # python app.py on http://127.0.0.1:5000
+#
+# Code directory: the current folder by default, or another one with
+#   CODE_DIR=../my-project docker-compose run --rm dev pytest
+#
+# Secrets: never in this file or in the image. Put them in a git-ignored
+# .env (chmod 600) and pass it explicitly:
+#   docker-compose run --rm --env-file .env dev python my_script.py
+
+# Every runtime control from tasks 10-13, shared by all services
+x-hardening: &hardening
+  image: secure-python-dev:v1
+  build:
+    context: .
+    dockerfile: Dockerfile
+  user: "1000:1000"                    # devuser, never root
+  working_dir: /workspace
+  volumes:
+    - ${CODE_DIR:-.}:/workspace        # the code, and nothing else from the host
+    - dev-home:/home/devuser           # shell history, caches, project venv
+  read_only: true                      # image filesystem cannot be modified
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=256m
+  cap_drop:
+    - ALL                              # no Linux capabilities at all
+  security_opt:
+    - no-new-privileges:true           # setuid binaries cannot raise privileges
+    # Docker's default seccomp profile applies: never set seccomp=unconfined
+  privileged: false
+  init: true                           # reaps zombies, forwards Ctrl-C
+  mem_limit: 2g
+  memswap_limit: 2g                    # = mem_limit: no swap
+  cpus: 2.0
+  pids_limit: 256                      # fork bomb protection
+  environment:
+    PYTHONDONTWRITEBYTECODE: "1"
+    PYTHONUNBUFFERED: "1"
+  # Never add: /var/run/docker.sock, ~/.ssh, ~/.aws, network_mode: host,
+  # pid: host, privileged: true, cap_add: SYS_ADMIN
+
+services:
+  # General purpose: docker-compose run --rm dev <command>
+  dev:
+    <<: *hardening
+    stdin_open: true
+    tty: true
+    command: ["/bin/bash"]
+
+  # Unit tests, cut off from every network (no exfiltration, no call to prod)
+  test:
+    <<: *hardening
+    network_mode: none
+    command: ["pytest", "-q"]
+
+  # Static checks
+  lint:
+    <<: *hardening
+    network_mode: none
+    command: ["sh", "-c", "pylint --recursive=y . && black --check . && mypy ."]
+
+  # Auto-format the code (writes to the mounted folder)
+  format:
+    <<: *hardening
+    network_mode: none
+    command: ["black", "."]
+
+  # Run the Flask app; port published on localhost only. The image only has
+  # the dev tools, so the project's requirements go into a venv kept on the
+  # dev-home volume (created on first run, reused afterwards).
+  app:
+    <<: *hardening
+    command:
+      - sh
+      - -c
+      - >-
+        [ -x /home/devuser/.venv/bin/python ] || python -m venv /home/devuser/.venv;
+        /home/devuser/.venv/bin/pip install -q -r requirements.txt &&
+        exec /home/devuser/.venv/bin/python app.py
+    ports:
+      - "127.0.0.1:5000:5000"
+
+volumes:
+  dev-home:
