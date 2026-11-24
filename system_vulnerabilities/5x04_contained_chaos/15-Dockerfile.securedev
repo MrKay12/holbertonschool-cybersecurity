@@ -1,0 +1,97 @@
+# secure-python-dev - hardened Python 3.11 development environment
+# (implements 14-design_document.md)
+#
+# Build:
+#   docker build -t secure-python-dev:v1 -f 15-Dockerfile.securedev .
+# Check:
+#   docker run --rm secure-python-dev:v1 id              # uid=1000(devuser) ...
+#   docker run --rm secure-python-dev:v1 python --version
+#   docker run --rm secure-python-dev:v1 pylint --version
+#
+# Daily use (project mounted, every runtime control from tasks 10-13):
+#   docker run --rm -it \
+#     -v "$PWD":/workspace \
+#     -v secure-python-dev-home:/home/devuser \
+#     --cap-drop=ALL --security-opt no-new-privileges:true \
+#     --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m \
+#     --memory=2g --memory-swap=2g --cpus=2 --pids-limit=256 \
+#     -p 127.0.0.1:5000:5000 \
+#     secure-python-dev:v1
+#
+#   Inside:  black .  |  pylint src/  |  mypy .  |  pytest
+#            python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+#
+# Secrets: none in this image. Pass them at runtime with --env-file .env
+# (chmod 600, git-ignored). Never mount ~/.ssh, ~/.aws or /var/run/docker.sock.
+#
+# To match a host user other than 1000:
+#   docker build --build-arg DEV_UID="$(id -u)" --build-arg DEV_GID="$(id -g)" ...
+
+# ===========================================================================
+# Stage 1 - builder: installs the tools into a self-contained virtualenv
+# ===========================================================================
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Pinned versions: reproducible builds, no surprise upgrade from PyPI
+RUN pip install --no-cache-dir \
+        pylint==3.3.1 \
+        black==24.10.0 \
+        pytest==8.3.3 \
+        mypy==1.13.0 \
+    && find /opt/venv -type d -name '__pycache__' -prune -exec rm -rf {} +
+
+# ===========================================================================
+# Stage 2 - runtime: Python 3.11 + the tool venv + an unprivileged user
+# ===========================================================================
+FROM python:3.11-slim AS runtime
+
+ARG DEV_UID=1000
+ARG DEV_GID=1000
+ARG VERSION=1.0.0
+
+LABEL org.opencontainers.image.title="secure-python-dev" \
+      org.opencontainers.image.description="Hardened Python 3.11 development environment: pylint, black, pytest, mypy; non-root, no secrets" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.vendor="CyberShield Consulting" \
+      org.opencontainers.image.authors="CyberShield Consulting Security Engineering" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.base.name="docker.io/library/python:3.11-slim" \
+      security.non-root="true" \
+      security.user="devuser" \
+      security.secrets="none" \
+      security.recommended-run-flags="--cap-drop=ALL --security-opt no-new-privileges:true --read-only --tmpfs /tmp"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+# devuser: fixed UID/GID 1000 (matches the usual host user, so files written
+# to the mounted project belong to the developer), no password, no sudo.
+# /workspace is where the project gets mounted.
+RUN groupadd --gid "${DEV_GID}" devuser \
+    && useradd --uid "${DEV_UID}" --gid devuser \
+       --create-home --home-dir /home/devuser --shell /bin/bash devuser \
+    && mkdir /workspace \
+    && chown devuser:devuser /workspace
+
+# Tools owned by root: devuser can run them but cannot modify them.
+# Python 3.11, pip and venv come from the official base image.
+COPY --from=builder /opt/venv /opt/venv
+
+USER devuser
+WORKDIR /workspace
+
+# The toolchain is healthy when the interpreter and every tool start.
+HEALTHCHECK --interval=60s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import pylint, black, pytest, mypy, venv, pip" || exit 1
+
+CMD ["/bin/bash"]
