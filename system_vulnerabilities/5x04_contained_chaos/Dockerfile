@@ -1,8 +1,8 @@
-# DevStream - hardened image: non-root user, no secrets
+# DevStream - hardened image: multi-stage, non-root user, no secrets
 #
-# Build:  docker build -t devstream-nosecrets:v1 -f Dockerfile .
-#         (same file as task 5: docker build -t devstream-nonroot:v1 ...)
-# Check:  docker run --rm devstream-nosecrets:v1 id
+# Build:  docker build -t devstream-multistage:v1 -f Dockerfile .
+#         (same file for tasks 5 and 6: devstream-nonroot:v1, devstream-nosecrets:v1)
+# Check:  docker run --rm devstream-multistage:v1 id
 #         uid=1000(appuser) gid=1000(appuser) groups=1000(appuser)
 #
 # ---------------------------------------------------------------------------
@@ -44,25 +44,53 @@
 #        COPY .env, or secrets in requirements.txt / config files copied in.
 # ---------------------------------------------------------------------------
 
+# ===========================================================================
+# Stage 1 - builder: compilers and pip, thrown away after the build
+# ===========================================================================
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Build dependencies, needed to compile packages with C extensions.
+# They exist only in this stage.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc make libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Dependencies go into a self-contained virtualenv that is copied as a whole
+# into the runtime stage.
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && find /opt/venv -type d -name '__pycache__' -prune -exec rm -rf {} +
+
+# ===========================================================================
+# Stage 2 - runtime: Python interpreter, the venv and the app, nothing else
+# ===========================================================================
 # Official slim image instead of ubuntu:latest (no compilers, no curl/wget/sudo)
-FROM python:3.11-slim
+FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PATH="/opt/venv/bin:$PATH"
 
 # Unprivileged user with a fixed UID/GID, no password, no login shell
 RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid appuser --no-create-home \
        --home-dir /nonexistent --shell /usr/sbin/nologin appuser
 
-WORKDIR /app
+# Only the installed dependencies come from the builder: no gcc, no make, no
+# headers, no pip cache. Owned by root, so appuser cannot modify them.
+COPY --from=builder /opt/venv /opt/venv
 
-# Dependencies are installed by root into the system site-packages,
-# so the application user cannot modify them.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+WORKDIR /app
 
 # Only the files the app needs (no COPY . /app). They stay owned by root:
 # appuser can read them but not rewrite its own code.
