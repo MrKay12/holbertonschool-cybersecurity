@@ -4,7 +4,7 @@
 #
 # Builds what is missing:
 #   devstream-vulnerable:latest  (via 1-build_vulnerable.sh)
-#   devstream-multistage:v1      (Dockerfile in this folder)
+#   devstream-multistage:v1      (Dockerfile.app in this folder)
 #
 # Env: SINGLE, MULTI (image names), REBUILD=1 to rebuild the multi-stage image
 
@@ -26,7 +26,7 @@ if ! docker image inspect "$SINGLE" >/dev/null 2>&1; then
 fi
 if [ "${REBUILD:-0}" = "1" ] || ! docker image inspect "$MULTI" >/dev/null 2>&1; then
     echo "Building multi-stage image ($MULTI)..."
-    docker build -q -t "$MULTI" -f "$SCRIPT_DIR/Dockerfile" "$SCRIPT_DIR" >/dev/null \
+    docker build -q -t "$MULTI" -f "$SCRIPT_DIR/Dockerfile.app" "$SCRIPT_DIR" >/dev/null \
         || die "cannot build $MULTI"
 fi
 

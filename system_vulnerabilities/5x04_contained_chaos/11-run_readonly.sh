@@ -9,7 +9,7 @@
 # Also keeps the task 10 controls: no capabilities, no-new-privileges.
 #
 # The container is left running.
-# Env: IMAGE (default devstream-secure:v1, built from ./Dockerfile if missing),
+# Env: IMAGE (default devstream-secure:v1, built from ./Dockerfile.app if missing),
 #      CONTAINER (default devstream-secure), PORT (default 5000)
 
 set -uo pipefail
@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="${IMAGE:-devstream-secure:v1}"
 CONTAINER="${CONTAINER:-devstream-secure}"
 PORT="${PORT:-5000}"
-APP_UID=1000   # appuser in the Dockerfile
+APP_UID=1000   # appuser in Dockerfile.app
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -27,7 +27,7 @@ docker info >/dev/null 2>&1 || die "cannot reach the Docker daemon"
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo "Building $IMAGE..."
-    docker build -q -t "$IMAGE" -f "$SCRIPT_DIR/Dockerfile" "$SCRIPT_DIR" >/dev/null \
+    docker build -q -t "$IMAGE" -f "$SCRIPT_DIR/Dockerfile.app" "$SCRIPT_DIR" >/dev/null \
         || die "cannot build $IMAGE"
 fi
 

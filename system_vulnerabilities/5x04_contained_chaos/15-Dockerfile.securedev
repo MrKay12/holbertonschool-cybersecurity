@@ -24,8 +24,6 @@
 # Secrets: none in this image. Pass them at runtime with --env-file .env
 # (chmod 600, git-ignored). Never mount ~/.ssh, ~/.aws or /var/run/docker.sock.
 #
-# To match a host user other than 1000:
-#   docker build --build-arg DEV_UID="$(id -u)" --build-arg DEV_GID="$(id -g)" ...
 
 # ===========================================================================
 # Stage 1 - builder: installs the tools into a self-contained virtualenv
@@ -52,8 +50,6 @@ RUN pip install --no-cache-dir \
 # ===========================================================================
 FROM python:3.11-slim AS runtime
 
-ARG DEV_UID=1000
-ARG DEV_GID=1000
 ARG VERSION=1.0.0
 
 LABEL org.opencontainers.image.title="secure-python-dev" \
@@ -77,9 +73,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # devuser: fixed UID/GID 1000 (matches the usual host user, so files written
 # to the mounted project belong to the developer), no password, no sudo.
 # /workspace is where the project gets mounted.
-RUN groupadd --gid "${DEV_GID}" devuser \
-    && useradd --uid "${DEV_UID}" --gid devuser \
-       --create-home --home-dir /home/devuser --shell /bin/bash devuser \
+RUN groupadd --gid 1000 devuser \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash devuser \
     && mkdir /workspace \
     && chown devuser:devuser /workspace
 

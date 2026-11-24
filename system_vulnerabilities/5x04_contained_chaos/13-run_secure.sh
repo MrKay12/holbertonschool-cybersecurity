@@ -14,7 +14,7 @@
 #   + tmpfs for /tmp and /app/logs, memory/CPU/PID limits.
 #
 # The container is left running.
-# Env: IMAGE (default devstream-secure:v1, built from ./Dockerfile if missing),
+# Env: IMAGE (default devstream-secure:v1, built from ./Dockerfile.app if missing),
 #      CONTAINER (default devstream-secure), PORT (default 5000)
 
 set -uo pipefail
@@ -33,7 +33,7 @@ docker info >/dev/null 2>&1 || die "cannot reach the Docker daemon"
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo "Building $IMAGE..."
-    docker build -q -t "$IMAGE" -f "$SCRIPT_DIR/Dockerfile" "$SCRIPT_DIR" >/dev/null \
+    docker build -q -t "$IMAGE" -f "$SCRIPT_DIR/Dockerfile.app" "$SCRIPT_DIR" >/dev/null \
         || die "cannot build $IMAGE"
 fi
 
