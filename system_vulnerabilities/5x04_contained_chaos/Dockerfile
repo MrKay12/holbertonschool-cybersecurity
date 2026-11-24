@@ -1,11 +1,48 @@
-# DevStream - hardened image, step 1: run as a non-root user
+# DevStream - hardened image: non-root user, no secrets
 #
-# Build:  docker build -t devstream-nonroot:v1 -f Dockerfile .
-# Check:  docker run --rm devstream-nonroot:v1 id
+# Build:  docker build -t devstream-nosecrets:v1 -f Dockerfile .
+#         (same file as task 5: docker build -t devstream-nonroot:v1 ...)
+# Check:  docker run --rm devstream-nosecrets:v1 id
 #         uid=1000(appuser) gid=1000(appuser) groups=1000(appuser)
-# Run:    docker run -d -p 127.0.0.1:5000:5000 -e DB_HOST=... devstream-nonroot:v1
 #
-# No secrets here: DB_HOST / DB_USER / DB_PASSWORD are supplied at runtime.
+# ---------------------------------------------------------------------------
+# SECRETS: NEVER IN THIS FILE
+# ---------------------------------------------------------------------------
+# Every ENV, ARG and RUN line is stored in the image config and layers and can
+# be read by anyone who pulls the image (docker history --no-trunc,
+# docker inspect). The old DB_HOST / DB_USER / DB_PASSWORD lines are removed:
+# the leaked password must be considered burnt and rotated.
+#
+# The image reads its configuration from the environment at RUNTIME:
+#   DB_HOST       database host
+#   DB_USER       database user
+#   DB_PASSWORD   database password
+#
+# How to pass them, from acceptable to best:
+#   1. -e flags (quick tests only: the values end up in shell history and in
+#      the host's process list):
+#        docker run -e DB_HOST=myhost -e DB_USER=myuser -e DB_PASSWORD=mypass \
+#            devstream-nosecrets:v1
+#   2. An env file readable only by its owner (chmod 600), never committed
+#      (add it to .gitignore and .dockerignore):
+#        docker run --env-file ./devstream.env devstream-nosecrets:v1
+#      This is what 6-run_with_secrets.sh does.
+#   3. Production: a secrets manager (Docker/Swarm secrets, Kubernetes
+#      Secrets, Vault, AWS Secrets Manager...), mounted as a file in
+#      /run/secrets/ on tmpfs instead of an environment variable.
+#
+# Values passed with -e / --env-file are not in the image, but they are still
+# visible to anyone who can run "docker inspect" on the container: restrict
+# access to the Docker socket.
+#
+# Build-time secrets (private package index token...) use BuildKit secret
+# mounts, which never reach a layer:
+#   RUN --mount=type=secret,id=pip_token PIP_TOKEN="$(cat /run/secrets/pip_token)" pip install ...
+#   docker build --secret id=pip_token,src=./pip_token.txt ...
+#
+# NEVER: ENV DB_PASSWORD=..., ARG DB_PASSWORD=..., RUN echo 'user:pass' | chpasswd,
+#        COPY .env, or secrets in requirements.txt / config files copied in.
+# ---------------------------------------------------------------------------
 
 # Official slim image instead of ubuntu:latest (no compilers, no curl/wget/sudo)
 FROM python:3.11-slim

@@ -1,2 +1,6 @@
 # Third-party tool fetched by 3-docker_bench.sh
 docker-bench-security/
+
+# Runtime secrets for 6-run_with_secrets.sh, never committed
+*.env
+.env*
