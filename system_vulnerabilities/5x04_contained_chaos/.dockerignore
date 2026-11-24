@@ -1,0 +1,5 @@
+# Keep the build context to what the image needs: no git history, no
+# secrets, no audit tooling or reports.
+*
+!app.py
+!requirements.txt
