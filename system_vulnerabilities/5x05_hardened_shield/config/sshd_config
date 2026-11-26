@@ -1,0 +1,57 @@
+# NovaTech Hardened Shield - OpenSSH server configuration (5x01 / 5x03)
+# Single source of truth: no Include, no drop-ins.
+# Host keys are passed with -h by init-services.sh (generated at runtime).
+
+Port 22
+AddressFamily inet
+ListenAddress 0.0.0.0
+PidFile /run/sshd.pid
+
+# Modern cryptography only
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+HostKeyAlgorithms ssh-ed25519,rsa-sha2-512,rsa-sha2-256
+
+# Authentication: public key only. MFA (publickey + TOTP) is switched on at
+# start with -o AuthenticationMethods=publickey,keyboard-interactive.
+PermitRootLogin no
+PubkeyAuthentication yes
+AuthorizedKeysFile /run/ssh/authorized_keys/%u
+AuthenticationMethods publickey
+PasswordAuthentication no
+PermitEmptyPasswords no
+KbdInteractiveAuthentication yes
+HostbasedAuthentication no
+IgnoreRhosts yes
+UsePAM yes
+AllowGroups sshusers
+StrictModes yes
+MaxAuthTries 3
+MaxSessions 2
+MaxStartups 10:30:60
+LoginGraceTime 30
+PermitUserEnvironment no
+
+# Idle sessions dropped after 10 minutes
+ClientAliveInterval 300
+ClientAliveCountMax 2
+TCPKeepAlive no
+
+# No forwarding / tunnelling: SSH is for administration, not a pivot
+X11Forwarding no
+AllowTcpForwarding no
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+PermitTunnel no
+GatewayPorts no
+
+Compression no
+UseDNS no
+PrintMotd no
+PrintLastLog yes
+Banner /etc/issue.net
+LogLevel VERBOSE
+SyslogFacility AUTH
+
+Subsystem sftp internal-sftp

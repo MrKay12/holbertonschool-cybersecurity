@@ -1,0 +1,6 @@
+Name: Check locked accounts before authentication (pam_faillock preauth)
+Default: no
+Priority: 1024
+Auth-Type: Primary
+Auth:
+	requisite	pam_faillock.so preauth

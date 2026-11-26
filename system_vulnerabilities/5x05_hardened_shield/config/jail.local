@@ -1,0 +1,14 @@
+# NovaTech fail2ban policy (5x03 task 10)
+# Started only when the container can manage iptables (cap NET_ADMIN + NET_RAW).
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 3
+backend  = auto
+banaction = iptables-multiport
+
+[sshd]
+enabled  = true
+port     = 22
+mode     = aggressive
+logpath  = /var/log/ssh/auth.log
