@@ -139,10 +139,10 @@ RUN /usr/local/sbin/init-hardening.sh --build \
 # 8080: Nginx as appuser (no NET_BIND_SERVICE needed).  22: sshd.
 EXPOSE 8080 22
 
-# Healthy = web answers AND the SSH daemon is alive.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS --max-time 3 http://127.0.0.1:8080/health >/dev/null \
-        && pgrep -x sshd >/dev/null || exit 1
+# Healthy = nginx up as non-root and GET /health = 200, sshd up and
+# answering its SSH-2.0 banner, fail2ban answering when it was started.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["/usr/local/sbin/init-services.sh", "--health"]
 
 STOPSIGNAL SIGTERM
 
