@@ -1,0 +1,184 @@
+# =============================================================================
+# NovaTech Solutions - Hardened Shield runtime profile (Capstone 5x05)
+# =============================================================================
+# The image is hardened at build time (Dockerfile); this file locks down the
+# RUNTIME: least capabilities, no privilege escalation, read-only root,
+# resource limits, controlled volumes and only the two required ports.
+#
+#   export SSH_ADMIN_PUBKEY="$(cat ~/.ssh/id_ed25519.pub)"
+#   docker compose up -d --build
+#   docker compose ps                         # health: healthy
+#   curl -I http://localhost/                 # web   (host 80  -> nginx 8080)
+#   ssh -p 2222 sysadmin@localhost            # admin (host 2222 -> sshd 22)
+#   docker compose exec shield audit.py       # security audit
+#
+# Nothing secret is stored here: the admin PUBLIC key comes from the shell
+# environment (or the Docker secret below), SSH host keys are generated on
+# first start and kept in a named volume.
+# =============================================================================
+
+name: hardened-shield
+
+services:
+  shield:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "1.0.0"
+    image: novatech/hardened-shield:1.0.0
+    container_name: hardened-shield
+    hostname: shield
+    restart: unless-stopped
+
+    # -------------------------------------------------------------------------
+    # Port mappings: web 80 and SSH 22 only.
+    #   80   -> 8080 : nginx runs entirely as appuser on an unprivileged port.
+    #   2222 -> 22   : container sshd on 22; published on host 2222 so it does
+    #                  not collide with the host's own sshd (set to "22:22" on
+    #                  a host without sshd).
+    # -------------------------------------------------------------------------
+    ports:
+      - "80:8080"
+      - "2222:22"
+
+    # -------------------------------------------------------------------------
+    # Capability restrictions: drop everything, add back only what sshd needs.
+    #   CHOWN             init-services.sh hands tmpfs dirs to appuser
+    #   SETUID / SETGID   sshd privilege separation, nginx dropped to appuser
+    #   SYS_CHROOT        sshd privsep chroot (/run/sshd)
+    #   NET_BIND_SERVICE  sshd binds port 22
+    #   KILL              supervisor signals nginx (appuser) on stop/reload
+    # Never granted: SYS_ADMIN, NET_ADMIN, NET_RAW, DAC_OVERRIDE, FOWNER,
+    # SYS_PTRACE, SYS_MODULE, MKNOD, AUDIT_WRITE...
+    # (fail2ban needs NET_ADMIN + NET_RAW; it stays off by default:
+    #  pam_faillock + MaxAuthTries 3 already limit brute force.)
+    # -------------------------------------------------------------------------
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - SYS_CHROOT
+      - NET_BIND_SERVICE
+      - KILL
+    privileged: false
+
+    # -------------------------------------------------------------------------
+    # Security options
+    # -------------------------------------------------------------------------
+    security_opt:
+      - no-new-privileges:true      # no gain through SUID/file caps (execve)
+      - apparmor:docker-default     # MAC profile (Debian/Ubuntu/Kali hosts)
+      # seccomp: Docker's default profile applies (never "unconfined")
+    read_only: true                 # immutable root filesystem
+    ipc: private
+    init: false                     # tini is already PID 1 (ENTRYPOINT)
+    # pid / network_mode / userns_mode are never "host": own namespaces.
+
+    # Network-namespaced kernel hardening (same values as config/99-hardening.conf;
+    # /proc/sys is read-only inside the container, so they are applied here).
+    sysctls:
+      net.ipv4.ip_forward: 0
+      net.ipv4.conf.all.forwarding: 0
+      net.ipv4.conf.all.accept_redirects: 0
+      net.ipv4.conf.default.accept_redirects: 0
+      net.ipv4.conf.all.secure_redirects: 0
+      net.ipv4.conf.default.secure_redirects: 0
+      net.ipv4.conf.all.send_redirects: 0
+      net.ipv4.conf.default.send_redirects: 0
+      net.ipv4.conf.all.rp_filter: 1
+      net.ipv4.conf.default.rp_filter: 1
+      net.ipv4.conf.all.accept_source_route: 0
+      net.ipv4.conf.default.accept_source_route: 0
+      net.ipv4.conf.all.log_martians: 1
+      net.ipv4.conf.default.log_martians: 1
+      net.ipv4.tcp_syncookies: 1
+      net.ipv4.icmp_echo_ignore_broadcasts: 1
+      net.ipv4.icmp_ignore_bogus_error_responses: 1
+
+    # -------------------------------------------------------------------------
+    # Resource limits (DoS / fork bomb / runaway process containment)
+    # -------------------------------------------------------------------------
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+          pids: 200
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    memswap_limit: 512M             # = memory limit: no swap
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
+      nproc: 512
+      core: 0                       # no core dumps (memory disclosure)
+    shm_size: 16m
+
+    # -------------------------------------------------------------------------
+    # Volume mounts
+    #   tmpfs  : the only writable paths, all nosuid,nodev and noexec
+    #   volumes: persistent SSH host keys and logs (web content stays in the
+    #            read-only image layer)
+    # -------------------------------------------------------------------------
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+      - /run:rw,noexec,nosuid,nodev,size=16m,mode=0755
+      - /var/lib/nginx:rw,noexec,nosuid,nodev,size=32m,mode=0755
+      - /var/lib/fail2ban:rw,noexec,nosuid,nodev,size=8m,mode=0750
+    volumes:
+      - type: volume
+        source: ssh-hostkeys
+        target: /var/lib/ssh-hostkeys        # stable host keys (no MITM warnings)
+      - type: volume
+        source: logs
+        target: /var/log                     # auth.log, nginx, hardening reports
+
+    # Admin public key (not a secret, but never baked into the image).
+    # Alternative: create ./secrets/ssh_admin_pubkey and uncomment "secrets".
+    environment:
+      SSH_ADMIN_PUBKEY: "${SSH_ADMIN_PUBKEY:-}"
+      MFA_ENABLED: "${MFA_ENABLED:-false}"
+      STRICT_HARDENING: "${STRICT_HARDENING:-false}"
+      FAIL2BAN_ENABLED: "false"
+      TZ: UTC
+    # secrets:
+    #   - ssh_admin_pubkey
+
+    healthcheck:
+      test: ["CMD", "/usr/local/sbin/init-services.sh", "--health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      - shield-net
+
+networks:
+  shield-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"   # no container-to-container traffic
+      com.docker.network.bridge.name: br-shield
+
+volumes:
+  ssh-hostkeys:
+  logs:
+
+# secrets:
+#   ssh_admin_pubkey:
+#     file: ./secrets/ssh_admin_pubkey
