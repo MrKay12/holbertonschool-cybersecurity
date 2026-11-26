@@ -75,10 +75,13 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Packages: latest security updates (5x01), then only what the image needs,
 # without recommends. No compiler, no network tools, no package caches.
+# nginx-core, not nginx-light: light is built without limit_req/limit_conn
+# (no rate limiting). Its extra dynamic modules are never loaded: nginx.conf
+# does not include modules-enabled.
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
-        nginx-light \
+        nginx-core \
         openssh-server \
         libpam-pwquality \
         libpam-google-authenticator \

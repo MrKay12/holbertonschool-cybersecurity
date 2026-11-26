@@ -207,6 +207,35 @@ write_file() {
 has_rule() { grep -vE '^[[:space:]]*#' "$2" 2>/dev/null | grep -qE "$1"; }
 
 # =============================================================================
+# 0. PAM profiles (pam-auth-update) - must run BEFORE any manual PAM edit:
+#    pam-auth-update silently keeps files it finds locally modified (and still
+#    exits 0), so every check below is re-verified after the call.
+# =============================================================================
+pam_profiles_active() {
+    has_rule 'pam_pwquality\.so' /etc/pam.d/common-password \
+        && has_rule 'pam_faillock\.so preauth' /etc/pam.d/common-auth \
+        && has_rule 'pam_faillock\.so authfail' /etc/pam.d/common-auth \
+        && has_rule 'pam_faillock\.so authsucc' /etc/pam.d/common-auth
+}
+
+pam_profiles() {
+    head_ "PAM profiles: pwquality + faillock (pam-auth-update)"
+    write_file /usr/share/pam-configs/faillock 0644 "$PAM_FAILLOCK_PROFILE"
+    write_file /usr/share/pam-configs/faillock_notify 0644 "$PAM_FAILLOCK_NOTIFY_PROFILE"
+    if pam_profiles_active; then
+        ok "pam_pwquality and pam_faillock (preauth/authfail/authsucc) active"
+        return
+    fi
+    # --force regenerates the common-* files; the manual additions
+    # (pam_pwhistory, faillock account phase) are re-applied right after.
+    remediate "enable pwquality + faillock profiles (pam-auth-update --force)" \
+        pam-auth-update --force --enable pwquality faillock faillock_notify
+    if ! checking && ! pam_profiles_active; then
+        err "pam-auth-update ran but pwquality/faillock are still not active"
+    fi
+}
+
+# =============================================================================
 # 1. Password policy (PAM)
 # =============================================================================
 pam_password_policy() {
@@ -216,11 +245,7 @@ pam_password_policy() {
     for kv in $PWQUALITY; do set_kv "$f" "${kv%%=*}" "${kv#*=}" "="; done
     for kv in $PWQUALITY_FLAGS; do set_flag "$f" "$kv"; done
 
-    if has_rule 'pam_pwquality\.so' /etc/pam.d/common-password; then
-        ok "pam_pwquality active in common-password"
-    else
-        remediate "enable pam_pwquality (pam-auth-update)" pam-auth-update --enable pwquality
-    fi
+    require "pam_pwquality active in common-password" has_rule 'pam_pwquality\.so' /etc/pam.d/common-password
 
     head_ "password policy: pam_pwhistory"
     local rule="password\trequired\t\t\tpam_pwhistory.so remember=$PWHISTORY_REMEMBER enforce_for_root use_authtok"
@@ -276,16 +301,7 @@ account_lockout() {
     for kv in $FAILLOCK; do set_kv "$f" "${kv%%=*}" "${kv#*=}" "="; done
     for kv in $FAILLOCK_FLAGS; do set_flag "$f" "$kv"; done
 
-    write_file /usr/share/pam-configs/faillock 0644 "$PAM_FAILLOCK_PROFILE"
-    write_file /usr/share/pam-configs/faillock_notify 0644 "$PAM_FAILLOCK_NOTIFY_PROFILE"
-    if has_rule 'pam_faillock\.so preauth' /etc/pam.d/common-auth \
-       && has_rule 'pam_faillock\.so authfail' /etc/pam.d/common-auth \
-       && has_rule 'pam_faillock\.so authsucc' /etc/pam.d/common-auth; then
-        ok "pam_faillock preauth/authfail/authsucc in common-auth"
-    else
-        remediate "enable pam_faillock (pam-auth-update)" \
-            pam-auth-update --enable faillock faillock_notify
-    fi
+    require "pam_faillock preauth/authfail/authsucc in common-auth" pam_profiles_active
     if has_rule 'pam_faillock\.so' /etc/pam.d/common-account; then
         ok "pam_faillock in common-account"
     else
@@ -509,12 +525,14 @@ runtime_authkeys() {
         raw="$raw"$'\n'"$SSH_ADMIN_PUBKEY"; src="${src:+$src + }SSH_ADMIN_PUBKEY"
     fi
     install -d -m 0755 -o root -g root /run/ssh "$AUTHKEYS_DIR" || { err "cannot create $AUTHKEYS_DIR"; return; }
-    local out="$AUTHKEYS_DIR/$ADMIN" tmp
-    tmp=$(mktemp)
+    local out="$AUTHKEYS_DIR/$ADMIN" tmp one
+    tmp=$(mktemp -p /run) && one=$(mktemp -p /run) || { err "mktemp in /run failed"; return; }
     while IFS= read -r line; do
         line="${line%$'\r'}"
         [[ -z "$line" || "$line" == \#* ]] && continue
-        if ! info=$(printf '%s\n' "$line" | ssh-keygen -lf /dev/stdin 2>/dev/null); then
+        # A real file, not /dev/stdin: a minimal /dev may not provide it.
+        printf '%s\n' "$line" > "$one"
+        if ! info=$(ssh-keygen -lf "$one" 2>/dev/null); then
             warn "ignored invalid public key line"
             continue
         fi
@@ -528,7 +546,7 @@ runtime_authkeys() {
         valid=$((valid + 1))
     done <<< "$raw"
     install -m 0644 -o root -g root "$tmp" "$out"
-    rm -f "$tmp"
+    rm -f "$tmp" "$one"
     if [ "$valid" -eq 0 ]; then
         # Not fatal: the web service still starts; SSH simply admits nobody.
         warn "no admin key: SSH logins impossible (set SSH_ADMIN_PUBKEY or /run/secrets/ssh_admin_pubkey)"
@@ -590,6 +608,7 @@ umask 027
 log INFO "=== identity & access controls ($MODE) ==="
 case "$MODE" in
     --build|--check)
+        pam_profiles
         pam_password_policy
         account_lockout
         ssh_accounts

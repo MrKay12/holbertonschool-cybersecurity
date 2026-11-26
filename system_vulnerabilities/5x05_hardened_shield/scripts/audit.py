@@ -853,7 +853,9 @@ def render_markdown(summary, ctx):
         f"| Operating system | {ctx['os']} (kernel {ctx['kernel']}) |",
         f"| Tool | {ctx['auditor']} |",
         f"| Privileges | {ctx['privileges']} |",
-        f"| Pass threshold | {summary['threshold']} % and no critical failure |", "",
+        f"| Pass threshold | {summary['threshold']} % and no critical failure |",
+    ] + ([f"| Environment | {md(ctx['note'])} |"] if ctx.get("note") else []) + [
+        "",
         "## 1. Executive Summary", "",
         f"**Overall result: {verdict} - {summary['score']} %**", "",
         f"{len(A.checks)} controls audited: **{n[PASS]} passed**, {n[WARN]} warnings, "
@@ -908,6 +910,7 @@ def main():
     parser.add_argument("--category", metavar="LIST",
                         help="comma-separated subset: " + ",".join(CATEGORIES))
     parser.add_argument("--threshold", type=float, default=80.0, help="pass threshold in %% (default 80)")
+    parser.add_argument("--note", metavar="TEXT", help="environment note added to the report header")
     parser.add_argument("--no-color", action="store_true", help="disable ANSI colors")
     parser.add_argument("-q", "--quiet", action="store_true", help="no console report")
     parser.add_argument("--version", action="version", version=f"audit.py {VERSION}")
@@ -933,6 +936,8 @@ def main():
 
     summary = summarize(args.threshold)
     ctx = context()
+    if args.note:
+        ctx["note"] = args.note
     stdout_used = args.output == "-" or args.json == "-"
 
     if not args.quiet and not stdout_used:

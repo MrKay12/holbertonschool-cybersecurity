@@ -69,8 +69,14 @@ info() { log INFO "$1"; }
 # pid_of NAME PIDFILE -> prints the PID if the pidfile points to a live NAME
 pid_of() {
     local name="$1" file="$2" pid
-    [ -r "$file" ] || return 1
-    pid=$(tr -dc '0-9' < "$file")
+    if [ -r "$file" ]; then
+        pid=$(tr -dc '0-9' < "$file")
+    else
+        # nginx keeps its pidfile in appuser's 0750 dir: root cannot read it
+        # without CAP_DAC_OVERRIDE. The oldest process of that name is the
+        # master. (-r: test(1) honours the missing capability.)
+        pid=$(pgrep -o -x "$name" 2>/dev/null)
+    fi
     # /proc rather than kill -0: kill -0 fails with EPERM on another user's
     # process, which would report a live service as dead.
     [ -n "$pid" ] && [ -d "/proc/$pid" ] || return 1
@@ -179,17 +185,35 @@ check_all() {
 # =============================================================================
 # Start (each step skips a service that is already running)
 # =============================================================================
+# mkdir_owned OWNER:GROUP MODE DIR...
+# Mode first, owner last: chmod on a directory root no longer owns needs
+# CAP_FOWNER, which the minimal capability set does not grant (install -d -o
+# does chown THEN chmod and fails there). Only CAP_CHOWN is needed this way.
+mkdir_owned() {
+    local own="$1" mode="$2" d; shift 2
+    for d in "$@"; do
+        mkdir -p "$d" || return 1
+        [ "$(stat -c '%U:%G' "$d")" = root:root ] || chown root:root "$d" || return 1
+        chmod "$mode" "$d" && chown "$own" "$d" || return 1
+    done
+}
+
 prepare_dirs() {
     # Recreated on every start: /run, /var/log and /var/lib/nginx may be
     # tmpfs on a read-only root filesystem.
-    install -d -m 0755 -o root -g root /run/sshd /var/run/faillock
-    install -d -m 0750 -o root -g adm /var/log/ssh
-    touch "$SSH_LOG" && chown root:adm "$SSH_LOG" && chmod 0640 "$SSH_LOG"
-    install -d -m 0750 -o "$APP_USER" -g "$APP_USER" /run/nginx /var/log/nginx /var/lib/nginx
+    mkdir_owned root:root 0755 /run/sshd /var/run/faillock || return 1
+    mkdir_owned root:adm 0750 /var/log/ssh || return 1
+    touch "$SSH_LOG" && chmod 0640 "$SSH_LOG" && chown root:adm "$SSH_LOG" || return 1
+    mkdir_owned "$APP_USER:$APP_USER" 0750 /run/nginx /var/log/nginx || return 1
+    # Children before the parent: once /var/lib/nginx is appuser 0750, root
+    # cannot enter it without CAP_DAC_OVERRIDE (not granted). On a restart
+    # the parent is handed back to root first (CAP_CHOWN is enough).
+    mkdir -p /var/lib/nginx && chown root:root /var/lib/nginx || return 1
     local d
     for d in body proxy fastcgi uwsgi scgi; do
-        install -d -m 0700 -o "$APP_USER" -g "$APP_USER" "/var/lib/nginx/$d"
+        mkdir_owned "$APP_USER:$APP_USER" 0700 "/var/lib/nginx/$d" || return 1
     done
+    mkdir_owned "$APP_USER:$APP_USER" 0750 /var/lib/nginx
 }
 
 test_configs() {
