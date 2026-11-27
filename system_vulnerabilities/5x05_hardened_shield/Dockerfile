@@ -11,7 +11,7 @@
 #     --build-arg VCS_REF="$(git rev-parse --short HEAD)" .
 #
 # Run (docker-compose.yml applies the full runtime profile):
-#   docker run -d --name shield -p 8080:8080 -p 2222:22 \
+#   docker run -d --name shield -p 80:8080 -p 22:22 \
 #     -e SSH_ADMIN_PUBKEY="$(cat ~/.ssh/id_ed25519.pub)" \
 #     novatech/hardened-shield:1.0.0
 #

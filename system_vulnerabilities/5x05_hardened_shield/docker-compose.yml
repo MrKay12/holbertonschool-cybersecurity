@@ -9,7 +9,9 @@
 #   docker compose up -d --build
 #   docker compose ps                         # health: healthy
 #   curl -I http://localhost/                 # web   (host 80  -> nginx 8080)
-#   ssh -p 2222 sysadmin@localhost            # admin (host 2222 -> sshd 22)
+#   ssh sysadmin@localhost                    # admin (host 22  -> sshd 22)
+#
+# Host already running its own sshd on 22?  SSH_HOST_PORT=2222 docker compose up -d
 #   docker compose exec shield audit.py       # security audit
 #
 # Nothing secret is stored here: the admin PUBLIC key comes from the shell
@@ -33,14 +35,13 @@ services:
 
     # -------------------------------------------------------------------------
     # Port mappings: web 80 and SSH 22 only.
-    #   80   -> 8080 : nginx runs entirely as appuser on an unprivileged port.
-    #   2222 -> 22   : container sshd on 22; published on host 2222 so it does
-    #                  not collide with the host's own sshd (set to "22:22" on
-    #                  a host without sshd).
+    #   80 -> 8080 : nginx runs entirely as appuser on an unprivileged port.
+    #   22 -> 22   : container sshd. If the host's own sshd already uses 22,
+    #                publish elsewhere: SSH_HOST_PORT=2222 docker compose up -d
     # -------------------------------------------------------------------------
     ports:
       - "80:8080"
-      - "2222:22"
+      - "${SSH_HOST_PORT:-22}:22"
 
     # -------------------------------------------------------------------------
     # Capability restrictions: drop everything, add back only what sshd needs.
@@ -115,8 +116,10 @@ services:
       nofile:
         soft: 4096
         hard: 8192
-      nproc: 512
       core: 0                       # no core dumps (memory disclosure)
+      # No "nproc" ulimit: RLIMIT_NPROC counts every process of a UID on the
+      # whole host (appuser = UID 1000), so it could stop nginx from forking.
+      # The cgroup "pids" limit above is the per-container fork-bomb guard.
     shm_size: 16m
 
     # -------------------------------------------------------------------------

@@ -30,7 +30,7 @@ maintains the image.
 ```
                     Internet / corporate network
                           |                 |
-                     TCP 80 (HTTP)     TCP 2222 (SSH)
+                     TCP 80 (HTTP)       TCP 22 (SSH)
                           |                 |
   ========================|=================|=========================  host
    docker bridge "shield-net" (inter-container traffic disabled)
@@ -58,7 +58,7 @@ maintains the image.
 | `tini` | PID 1: forwards signals, reaps zombie processes | root | - |
 | `init-services.sh` | Entrypoint: runs the runtime checks, prepares directories, starts and supervises the services, health checks | root | - |
 | Nginx (`nginx-core`) | Static web server, rate-limited | **appuser**, master and workers | 8080 (published on 80) |
-| OpenSSH | Remote administration | root for privilege separation, then the logged-in user | 22 (published on 2222) |
+| OpenSSH | Remote administration | root for privilege separation, then the logged-in user | 22 (published on 22, or `SSH_HOST_PORT`) |
 | fail2ban | Bans IPs after failed SSH logins (optional) | root | - |
 | `audit.py` | Automated compliance audit | any user, full results as root | - |
 
@@ -187,7 +187,7 @@ reports `0 fixed`.
 | Mandatory access control | Docker's default seccomp profile, AppArmor `docker-default` |
 | Filesystem | `read_only: true`; writable tmpfs only, all `noexec,nosuid,nodev` |
 | Resource limits | 1 CPU, 512 MB memory with no swap, 200 processes, `nofile` 4096/8192, no core dumps |
-| Network | Only ports 80 (web) and 2222 (SSH) published; dedicated bridge with inter-container traffic disabled |
+| Network | Only ports 80 (web) and 22 (SSH) published; dedicated bridge with inter-container traffic disabled |
 | Metadata | OCI labels (version, date, revision, vendor, licence) and `security.*` labels |
 | Health | `HEALTHCHECK` every 30 s (timeout 10 s, 3 retries, 30 s start period) |
 
@@ -218,7 +218,8 @@ Engine patched.
 
 - Docker Engine 20.10+ with Compose v2 (`docker compose`)
 - An SSH key pair for the administrator (ed25519 recommended)
-- Host ports 80 and 2222 free
+- Host ports 80 and 22 free (if the host runs its own sshd, start with
+  `SSH_HOST_PORT=2222` and add `-p 2222` to the `ssh` commands below)
 
 ### 3.2 Build
 
@@ -263,7 +264,7 @@ curl -I http://localhost/
 Administration (key login only):
 
 ```bash
-ssh -p 2222 sysadmin@localhost
+ssh sysadmin@localhost
 ```
 
 On first connection, check the host key fingerprint against the one in the
@@ -402,12 +403,12 @@ The automated audit is complemented by these spot checks from outside the
 container:
 
 ```bash
-ssh -o PreferredAuthentications=password -p 2222 sysadmin@localhost
+ssh -o PreferredAuthentications=password sysadmin@localhost
 ```
 Expected: `Permission denied (publickey)`.
 
 ```bash
-ssh -p 2222 root@localhost
+ssh root@localhost
 ```
 Expected: refused.
 

@@ -72,7 +72,7 @@ These are tracked as residual risks with owners and deadlines (section 5).
 | Runtime profile | `docker-compose.yml`: capabilities, security options, resource limits, volumes, ports, sysctls |
 | Hardening scripts | `init-hardening.sh` (system), `init-identity.sh` (identity), `init-services.sh` (services) |
 | Configuration | `config/`: `sshd_config`, `nginx.conf`, PAM (`pwquality.conf`, `faillock.conf`, profiles), `jail.local`, `99-hardening.conf`, banner |
-| Services | Nginx (web, TCP 8080 published on 80), OpenSSH (administration, TCP 22 published on 2222) |
+| Services | Nginx (web, TCP 8080 published on 80), OpenSSH (administration, TCP 22) |
 | Audit tooling | `audit.py` and its report `audit_result.md` |
 
 ### 2.2 Out of scope
@@ -161,7 +161,7 @@ Both points are addressed in section 5.
 | Secrets in image | none | none | ✅ |
 | Image size | < 500 MB | ~180 MB | ✅ |
 | Health check | present | every 30 s, 3 retries | ✅ |
-| Published ports | web + SSH only | 80 → 8080, 2222 → 22 | ✅ |
+| Published ports | web + SSH only | 80 → 8080, 22 → 22 | ✅ |
 
 ---
 
@@ -233,7 +233,7 @@ Risk rating = likelihood × impact (Low / Medium / High).
 | R-02 | Host kernel settings `kptr_restrict` and `dmesg_restrict` not set, so kernel addresses and logs can leak to help exploits | Medium | Medium | **Medium** | **Mitigate:** add them to the host baseline (`/etc/sysctl.d/`, see SECURITY.md §2.5) | Infrastructure team | 2026-12-15 |
 | R-03 | fail2ban disabled (no `NET_ADMIN`), so attacking IPs are not banned at the network level | Medium | Low | **Low** | **Accept:** key-only SSH, faillock and `MaxAuthTries 3` make brute force ineffective; giving `NET_ADMIN` would be a bigger risk | Security Engineering | Review 2027-05 |
 | R-04 | The container starts as root because sshd needs it, so an sshd vulnerability could give root inside the container | Low | Medium | **Low** | **Mitigate:** root is limited by 6 capabilities, no-new-privileges, read-only root and seccomp. Patch OpenSSH quickly. Long term, consider moving SSH out of the image | Security Engineering | Review 2027-05 |
-| R-05 | SSH published on the network (port 2222) | Medium | Medium | **Medium** | **Mitigate:** restrict port 2222 to the admin network or VPN at the firewall | Infrastructure team | 2026-12-15 |
+| R-05 | SSH published on the network (port 22) | Medium | Medium | **Medium** | **Mitigate:** restrict port 22 to the admin network or VPN at the firewall | Infrastructure team | 2026-12-15 |
 | R-06 | No TLS in the image: HTTP on port 80 is plain text | High | Medium | **Medium** | **Transfer:** TLS terminates at the load balancer or reverse proxy (out of scope); do not expose port 80 directly to the Internet | Platform team | Before go-live |
 | R-07 | Ubuntu 22.04 standard support ends in April 2027; new vulnerabilities in the packages | Medium | Medium | **Medium** | **Mitigate:** monthly rebuild and image scan; plan migration to the next LTS | Security Engineering | Plan by 2027-02 |
 | R-08 | Results come from a sandbox that reproduces Docker, not from Docker itself | Low | Low | **Low** | **Mitigate:** repeat the audit on the first production deployment and attach the report to this document | Security Engineering | First deployment |

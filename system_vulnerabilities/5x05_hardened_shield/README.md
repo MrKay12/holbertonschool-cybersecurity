@@ -67,7 +67,7 @@ curl -I http://localhost/
 ```
 
 ```bash
-ssh -p 2222 sysadmin@localhost
+ssh sysadmin@localhost
 ```
 
 ```bash
@@ -95,6 +95,7 @@ docker compose down
 │   ├── init-identity.sh       Identity hardening: PAM, lockout, SSH, root lockdown, keys, MFA
 │   ├── init-services.sh       Entrypoint: start, supervise and health-check Nginx, sshd, fail2ban
 │   ├── audit.py               Security audit: 5 categories, scores, PASS/FAIL, Markdown/JSON
+│   ├── integration-test.sh    End-to-end validation: build, up, web :80, SSH :22, audit, controls
 │   └── audit_result.md        Copy of the latest audit report
 └── config/
     ├── sshd_config            Key-only SSH, modern crypto, no forwarding, AllowGroups sshusers
@@ -149,7 +150,7 @@ docker compose up -d
 
 | Setting | Value |
 |---|---|
-| Ports | `80 → 8080` (web), `2222 → 22` (SSH) |
+| Ports | `80 → 8080` (web), `22 → 22` (SSH; `SSH_HOST_PORT=2222` if the host already runs sshd) |
 | Capabilities | `cap_drop: ALL` + CHOWN, SETUID, SETGID, SYS_CHROOT, NET_BIND_SERVICE, KILL |
 | Security options | `no-new-privileges:true`, AppArmor `docker-default`, default seccomp, `read_only: true` |
 | Resources | 1 CPU, 512 MB memory (no swap), 200 processes |
@@ -160,7 +161,7 @@ docker compose up -d
 Equivalent hardened command:
 
 ```bash
-docker run -d --name hardened-shield -p 80:8080 -p 2222:22 --cap-drop=ALL --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=SYS_CHROOT --cap-add=NET_BIND_SERVICE --cap-add=KILL --security-opt no-new-privileges:true --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev --tmpfs /run:rw,noexec,nosuid,nodev --tmpfs /var/lib/nginx:rw,noexec,nosuid,nodev --tmpfs /var/lib/fail2ban:rw,noexec,nosuid,nodev -v ssh-hostkeys:/var/lib/ssh-hostkeys -v shield-logs:/var/log --memory 512m --memory-swap 512m --cpus 1 --pids-limit 200 -e SSH_ADMIN_PUBKEY="$SSH_ADMIN_PUBKEY" novatech/hardened-shield:1.0.0
+docker run -d --name hardened-shield -p 80:8080 -p 22:22 --cap-drop=ALL --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=SYS_CHROOT --cap-add=NET_BIND_SERVICE --cap-add=KILL --security-opt no-new-privileges:true --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev --tmpfs /run:rw,noexec,nosuid,nodev --tmpfs /var/lib/nginx:rw,noexec,nosuid,nodev --tmpfs /var/lib/fail2ban:rw,noexec,nosuid,nodev -v ssh-hostkeys:/var/lib/ssh-hostkeys -v shield-logs:/var/log --memory 512m --memory-swap 512m --cpus 1 --pids-limit 200 -e SSH_ADMIN_PUBKEY="$SSH_ADMIN_PUBKEY" novatech/hardened-shield:1.0.0
 ```
 
 ### Configuration
@@ -186,6 +187,7 @@ docker run -d --name hardened-shield -p 80:8080 -p 2222:22 --cap-drop=ALL --cap-
 | Audit report | `docker compose exec shield audit.py -q -o /tmp/audit_result.md` then `docker compose cp shield:/tmp/audit_result.md .` |
 | JSON for CI | `docker compose exec shield audit.py -q --json -` |
 | Logs | `docker compose logs -f shield` |
+| Integration validation (host) | `scripts/integration-test.sh` (`--down` to stop after, `--save-report` to refresh `audit_result.md`) |
 
 ## Security Features Summary
 
